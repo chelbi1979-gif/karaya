@@ -1,0 +1,13 @@
+{
+  "name": "Karaya — Gestion de location",
+  "short_name": "Karaya",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f7f4f6",
+  "theme_color": "#9d174d",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    { "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIgMTkyIj48cmVjdCB3aWR0aD0iMTkyIiBoZWlnaHQ9IjE5MiIgcng9IjM4IiBmaWxsPSIjOWQxNzRkIi8+PHRleHQgeD0iOTYiIHk9IjEyOCIgZm9udC1zaXplPSI5NiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+8J+RkTwvdGV4dD48L3N2Zz4=", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

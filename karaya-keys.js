@@ -1,0 +1,2 @@
+/* karaya-keys.js — clé PUBLIQUE de vérification (aucun secret ici) */
+window.KARAYA_PUBKEY={"kty": "RSA", "n": "stI70RByzQ1S7asmhWOyQehScucjBwbWaV4X70dwYnsTvyCCbLnxEZCxmTBuP6Q77yYfAiad7VFudXJAvRPKo_mRfhbG72WI3FvteXuSdJUcSH_9gM2rEqc0JDQEDSQo_SXkGI-02NJbOXBLnsIPEYdTXF7hCLCTYrXA_C_sL1TOC28gtGHDWmMbDWPtE6RWZziz0_wiexxEf9AL5UsuYHrf_uP-w0BVjn_NNymQyupgEg4of-AtvqAIytCyiTnO0TgzVzYJEdRMUGB6hgU4ZYE-1JQjiSlh70xEaHXW1ONXzck0AG7tDxuaLtHm129saS-w-MP9inViYo36Lod3Zw", "e": "AQAB", "alg": "RS256", "ext": true};
