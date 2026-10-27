@@ -2,7 +2,7 @@ name: Deploy Karaya Cloud (GitHub Pages)
 
 on:
   push:
-    branches: [main]
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -11,28 +11,35 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: "pages"
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
       - name: Prepare site
         run: |
           mkdir -p _site
-          cp app/index.html app/karaya-*.js _site/
-          cp app/manifest.webmanifest app/sw.js _site/ 2>/dev/null || true
-      - uses: actions/upload-pages-artifact@v3
+          cp index.html _site/
+          cp sw.js _site/ 2>/dev/null || true
+          cp manifest.webmanifest _site/ 2>/dev/null || true
+          cp karaya-*.js _site/ 2>/dev/null || true
+          cp karaya-*.css _site/ 2>/dev/null || true
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: '_site'
+
   deploy:
-    needs: build
-    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-ready || runs-on: ubuntu-latest
+    needs: build
     steps:
-      - id: deployment
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
