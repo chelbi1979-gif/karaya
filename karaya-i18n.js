@@ -25,7 +25,7 @@ var KARAYA_FR = {
 "توزيع الأزرار في الواجهة":"Disposition des boutons",
 "استيراد / تصدير":"Importer / Exporter","الإعدادات":"Paramètres",
  "ما يعود غدا":"Retours de demain",
-"حجزوزات اليوم":"Réservations du jour",
+"حجوزات اليوم":"Réservations du jour",
 "ضبط الصندوق":"Configuration de la caisse",
 "تسجيل الخروج":"Déconnexion","تسجيل الخروج — قفل التطبيق":"Déconnexion — verrouiller",
 "＋ منتوج جديد":"＋ Nouvel article","كل الحالات":"Tous les états",
