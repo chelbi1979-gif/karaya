@@ -11,7 +11,7 @@ var KARAYA_FR = {
 "حجوزات الشهر":"Réservations du mois",
 "حجوزات الشهر القادم":"Réservations du mois prochain",
 "الديون المحصلة اليوم":"Dettes encaissées aujourd'hui",
-"ضبط الصندوق":"Configuration de la caisse",
+"ضبط الصندوق":"Contrôle de caisse",
 "ضبط الصندوق — Contrôle caisse":"Contrôle de caisse",
 
 /* --- Navigation & Menu principal --- */
@@ -474,7 +474,38 @@ var KARAYA_FR = {
 "خطأ في قراءة الملف:":"Erreur de lecture du fichier :",
 "خطأ:":"Erreur :",
 "لا يوجد أي منتوج يعود في":"Aucun article à retourner le",
-"الكراء الحالي رقم":"Location en cours n°"
+"الكراء الحالي رقم":"Location en cours n°",
+
+/* ===== compléments issus de l'audit de l'interface (AR -> FR) ===== */
+"📅 لا يوجد كراء أو حجز حاليا":"Aucune location ni réservation en cours",
+"حذف هذا المنتوج ؟":"Supprimer cet article ?",
+"حذف هذا الكراء ؟":"Supprimer cette location ?",
+"حذف هذا المصروف ؟":"Supprimer cette dépense ?",
+"· مكري حاليا":"· En location",
+"· محجوز":"· Réservé",
+"· متوفر":"· Disponible",
+"إعادة الحساب : ":"Recalcul : ",
+"لم يتم استيراد أي ملف بعد.":"Aucun fichier importé pour le moment.",
+"الغد":"Demain",
+"نشط":"Actif",
+"موقوف":"Suspendu",
+"▶️ تنشيط":"▶️ Activer",
+"⏸️ إيقاف":"⏸️ Suspendre",
+"الشريط الحالي":"Barre actuelle",
+"دائري":"Arrondi",
+"كبسولة":"Pilule",
+"مربع":"Carré",
+"مضبوط":"Ajusté",
+"ظل ناعم":"Ombre douce",
+
+/* ===== mode Essai / activation Web-Mobile ===== */
+"البريد الإلكتروني (معرّف التفعيل)":"E-mail (identifiant d'activation)",
+"⚠️ أدخل البريد الإلكتروني":"⚠️ Saisissez l'e-mail",
+"⚠️ البريد الإلكتروني غير صالح":"⚠️ E-mail invalide",
+"✅ تم التفعيل بنجاح — استعمال غير محدود":"✅ Activé — usage illimité",
+"❌ الرمز منتهي الصلاحية":"❌ Code expiré",
+"❌ الرمز مخصص لمعرّف آخر (البريد الإلكتروني)":"❌ Code lié à un autre identifiant (e-mail)",
+"⚠️ الوحدة karaya-license.js غير محمّلة":"⚠️ Module karaya-license.js non chargé"
 };
 
 (function () {
@@ -523,6 +554,14 @@ var KARAYA_FR_RX = [
   [/^تم التحصيل (.+)$/, "Encaissé : $1"],
   [/^رقم الجهاز : (.+)$/, "N° de machine : $1"],
   [/^حالة الترخيص : (.+)$/, "État de la licence : $1"],
+
+  /* --- mode Essai / activation Web-Mobile (phrases dynamiques) --- */
+  [/^🎁 وضع التجربة : (\d+) \/ (\d+) — المتبقي : (\d+)$/, "🎁 Mode essai : $1 / $2 — restant : $3"],
+  [/^⛔ انتهت التجربة : (\d+) \/ (\d+) — التفعيل مطلوب لمواصلة الإضافة$/, "⛔ Essai terminé : $1 / $2 — activation requise pour continuer"],
+  [/^⛔ انتهت فترة التجربة \((\d+)\/(\d+)\) — قم بتفعيل التطبيق$/, "⛔ Période d'essai terminée ($1/$2) — activez l'application"],
+  [/^❌ خطأ أثناء التحقق : (.+)$/, "❌ Erreur de vérification : $1"],
+  [/^إعادة الحساب : (.+)$/, "Recalcul : $1"],
+  [/^تمت أرشفة (\d+) سجل$/, "$1 enregistrement(s) archivé(s)"],
 ];
 
 function rxTranslate(s) {

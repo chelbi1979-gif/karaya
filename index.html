@@ -543,10 +543,15 @@ try{var _lt=localStorage.getItem('karaya_nav_layout_v1')||'classic';if(['classic
     <div class="lock-logo">🔑</div>
     <h1 class="lock-title">رمز الدخول</h1>
     <div id="actState" class="lock-sub" style="font-weight:800"></div>
-    <div class="lock-field">
+    <div class="lock-field" id="act_serial_wrap">
       <label>رقم التعريف</label>
       <input id="act_serial" type="text" readonly style="background:#f7f4f6;color:#7c6f77">
     </div>
+    <div class="lock-field" id="act_id_wrap" style="display:none">
+      <label for="act_id">البريد الإلكتروني (معرّف التفعيل)</label>
+      <input id="act_id" type="email" dir="ltr" autocomplete="email" placeholder="email@exemple.com">
+    </div>
+    <div id="actTrial" class="lock-sub" style="font-weight:700;color:#b45309;display:none"></div>
     <div class="lock-field">
       <label for="act_key">رمز الدخول</label>
       <input id="act_key" type="text" placeholder="••••••" autocomplete="off">
@@ -1150,6 +1155,48 @@ function canEditOld() { return isAdmin() || !!(activeUser && activeUser.perms &&
 function canDeleteOld() { return isAdmin() || !!(activeUser && activeUser.perms && activeUser.perms.deleteold === true); }
 /* وضع القراءة فقط : يُطبق على الكراءات المسجلة فقط (الكراء الجديد يبقى حرا) */
 function rentRO() { return !!(currentLoc && currentLoc.id && !canEditOld()); }
+
+/* ------------------------------------------------------------------
+   Libellés ajoutés pour le mode Essai / activation Web-Mobile.
+   I18N.add n'écrase jamais une entrée existante : sans danger.
+   ------------------------------------------------------------------ */
+try {
+  if (window.I18N && window.I18N.add) window.I18N.add({
+    'البريد الإلكتروني (معرّف التفعيل)': 'E-mail (identifiant d\'activation)',
+    '⚠️ أدخل البريد الإلكتروني': '⚠️ Saisissez l\'e-mail',
+    '⚠️ البريد الإلكتروني غير صالح': '⚠️ E-mail invalide',
+    '✅ تم التفعيل بنجاح — استعمال غير محدود': '✅ Activé — usage illimité',
+    '❌ الرمز منتهي الصلاحية': '❌ Code expiré',
+    '❌ الرمز مخصص لمعرّف آخر (البريد الإلكتروني)': '❌ Code lié à un autre identifiant (e-mail)',
+    '❌ خطأ أثناء التحقق : ': '❌ Erreur de vérification : ',
+    '🎁 وضع التجربة : ': '🎁 Mode essai : ',
+    '⛔ انتهت التجربة : ': '⛔ Essai terminé : ',
+    '⛔ انتهت فترة التجربة (': '⛔ Période d\'essai terminée (',
+    ') — قم بتفعيل التطبيق': ') — activez l\'application',
+    '⚠️ الوحدة karaya-license.js غير محمّلة': '⚠️ Module karaya-license.js non chargé',
+    'التفعيل مطلوب لمواصلة الإضافة': 'activation requise pour continuer',
+    'المتبقي : ': 'Restant : ',
+    /* --- traductions manquantes repérées lors de l'audit --- */
+    'لا يوجد كراء أو حجز حاليا': 'Aucune location ni réservation en cours',
+    'حذف هذا المنتوج ؟': 'Supprimer cet article ?',
+    '· مكري حاليا': '· En location',
+    '· محجوز': '· Réservé',
+    '· متوفر': '· Disponible',
+    'حذف هذا الكراء ؟': 'Supprimer cette location ?',
+    'حذف هذا المصروف ؟': 'Supprimer cette dépense ?',
+    'إعادة الحساب : ': 'Recalcul : ',
+    'لم يتم استيراد أي ملف بعد.': 'Aucun fichier importé pour le moment.',
+    'موقوف': 'Suspendu',
+    '▶️ تنشيط': '▶️ Activer',
+    '⏸️ إيقاف': '⏸️ Suspendre',
+    'الشريط الحالي': 'Barre actuelle',
+    'دائري': 'Arrondi',
+    'كبسولة': 'Pilule',
+    'مربع': 'Carré',
+    'مضبوط': 'Ajusté',
+    'ظل ناعم': 'Ombre douce'
+  });
+} catch (e) { }
 
 const API = () => (window.pywebview && window.pywebview.api) ? window.pywebview.api : null;
 const STORE = { mode: 'browser', sqlite: '', json: '', last: '', ok: false, saved: 0 };
@@ -2538,7 +2585,36 @@ function addLine() {
   currentLoc.reste = resteOf(currentLoc);
   save(); closeModal('m-line'); renderRentalForm();
 }
+/* ------------------------------------------------------------------
+   Garde licence / essai — exécutée AVANT toute écriture.
+     Desktop  : laisse passer (le verrou matériel est côté Python).
+     Web/Mob  : licence RSA valide OU essai < 10 contrats, sinon blocage.
+   L'incrément du compteur n'a lieu QU'APRÈS un enregistrement réussi,
+   et uniquement pour un NOUVEAU contrat (une modification ne compte pas).
+   ------------------------------------------------------------------ */
+let _trialGrant = null;
+
 function saveRental() {
+  const isNew = !(currentLoc && currentLoc.id);
+  if (window.KLicense && typeof KLicense.checkLicenseOrTrial === 'function') {
+    KLicense.checkLicenseOrTrial().then(function (g) {
+      if (!g || !g.ok) { trialBlocked(g); return; }
+      _trialGrant = { mode: isNew ? g.mode : 'edit', used: g.used || 0, platform: g.platform };
+      _rentalSaveCore();
+    }).catch(function () { _rentalSaveCore(); });
+    return;
+  }
+  _rentalSaveCore();
+}
+
+function trialBlocked(g) {
+  const max = (g && g.max) || (window.KLicense ? KLicense.TRIAL_MAX : 10);
+  const used = (g && g.used) || (window.KLicense ? KLicense.trialCount() : max);
+  toast('⛔ انتهت فترة التجربة (' + used + '/' + max + ') — قم بتفعيل التطبيق', 'err');
+  setTimeout(function () { try { openActivation(); } catch (e) { } }, 60);
+}
+
+function _rentalSaveCore() {
   const l = currentLoc;
   if (l.id && !canEditOld()) { toast('⛔ تعديل الكراءات و الحجوزات المسجلة يتم فقط بإذن من المدير', 'err'); return; }
   rentCalc();
@@ -2580,6 +2656,11 @@ function saveRental() {
   } else { l.id = uid('l'); DB.locs.push(l); }
   editLines.forEach(d => DB.lines.push({ id: d.id || uid('d'), locId: l.id, artId: d.artId, prix: num(d.prix), qte: +d.qte || 1, total: num(d.total), datret: d.datret }));
   save();
+  /* enregistrement réussi → on ne compte l'essai qu'ici */
+  if (window.KLicense && typeof KLicense.noteSaveDone === 'function' && _trialGrant) {
+    try { KLicense.noteSaveDone(_trialGrant); } catch (e) { }
+  }
+  _trialGrant = null;
   toast('تم حفظ الكراء رقم ' + l.num, 'ok');
   openRental(l.id);
 }
@@ -4116,6 +4197,486 @@ function restoreJSON(ev) {
   const f = ev && ev.target && ev.target.files ? ev.target.files[0] : null;
   restoreFileObj(f);
   if (ev && ev.target) ev.target.value = '';
+}
+
+/* ================= التشغيل ================= */
+/* ================= النسخ الاحتياطي التلقائي (Python / D: E: / %APPDATA%) =================
+   لا يوجد أي اتصال بشبكة أو حساب سحابي : النسخ تُكتب محليا على القرص.
+   - نسخة مؤرَّخة عند كل إغلاق للتطبيق
+   - نسخة واحدة كل يوم أثناء الاستعمال
+   - زر يدوي إضافي
+   الملفات : AAAAMMJJ_HH-MM-SS_<نوع>.json */
+function bkFmt(n) { try { return nf(n) + ' بايت'; } catch (e) { return n + ' B'; } }
+
+async function bkRefresh() {
+  const box = $('bkOut');
+  const api = API();
+  if (!box) return;
+  if (!api || !api.backup_status) {
+    box.innerHTML = '<span class="small">جسر Python غير متاح — النسخ الاحتياطي التلقائي يعمل فقط داخل تطبيق سطح المكتب.</span>';
+    return;
+  }
+  try {
+    const st = await api.backup_status();
+    if (!st || !st.ok) { box.innerHTML = '<span class="small">تعذر قراءة حالة النسخ: ' + esc((st && st.error) || '?') + '</span>'; return; }
+    const rows = (st.files || []).map(f =>
+      `<div class="bk-row"><b>${esc(f.name)}</b><span class="small">${esc(f.date)} · ${esc(bkFmt(f.size))}</span></div>`).join('');
+    box.innerHTML =
+      `<div class="kv"><span>المجلد</span><b dir="ltr">${esc(st.backup_dir)}</b></div>` +
+      `<div class="kv"><span>القاعدة</span><b dir="ltr">${esc(st.backup_dir.split('\\').slice(0, 1).join('') === '' ? '' : st.backup_dir)}</b></div>` +
+      `<div class="kv"><span>العدد</span><b>${nf(st.count)} / ${nf(st.max)}</b></div>` +
+      `<div class="kv"><span>آخر نسخة</span><b>${esc(st.last || '—')}</b></div>` +
+      (rows ? `<div class="bk-list">${rows}</div>` : '<div class="small mt">لا توجد نسخة بعد.</div>');
+  } catch (e) {
+    box.innerHTML = '<span class="small">تعذر قراءة حالة النسخ: ' + esc(e && e.message || e) + '</span>';
+  }
+}
+
+async function bkNow() {
+  const api = API();
+  if (!api || !api.backup_now) { toast('النسخ الاحتياطي يعمل داخل تطبيق سطح المكتب فقط', 'err'); return; }
+  try {
+    const r = await api.backup_now();
+    if (r && r.ok) { toast('✅ تم إنشاء نسخة احتياطية', 'ok'); bkRefresh(); }
+    else toast('❌ تعذر إنشاء النسخة: ' + esc((r && r.error) || '?'), 'err');
+  } catch (e) { toast('خطأ: ' + e.message, 'err'); }
+}
+
+async function bkOpen() {
+  const api = API();
+  if (!api || !api.open_backup_dir) { toast('غير متاح', 'err'); return; }
+  try { await api.open_backup_dir(); } catch (e) { toast('خطأ: ' + e.message, 'err'); }
+}
+document.querySelectorAll('.modal-bg').forEach(bg => bg.addEventListener('click', e => { if (e.target === bg) bg.classList.remove('show'); }));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.modal-bg.show').forEach(m => m.classList.remove('show')); });
+document.addEventListener('click', function (e) {
+  const b = e.target && e.target.closest ? e.target.closest('[data-go]') : null;
+  if (b && b.dataset.go) { go(b.dataset.go); return; }
+  const ring = document.getElementById('navRing');
+  const cir = document.getElementById('navCircle');
+  if (cir && cir.classList.contains('open') && e.target === ring) cir.classList.remove('open');
+});
+
+/* ================= لوحة المدير : الإحصائيات + الصلاحيات ================= */
+let admTab = 'stats';
+
+function canTile(k) {
+  const base = String(k).split(':')[0];
+  const map = { newClient: 'clients' };
+  return can(map[base] || base);
+}
+
+function renderAdmin(tab) {
+  if (!isAdmin()) { toast('⛔ هذه الصفحة مخصصة للمدير فقط', 'err'); go('home'); return; }
+  if (tab) admTab = tab;
+  $('adminBody').innerHTML = `
+    <div class="tabbar">
+      <button class="btn ${admTab === 'stats' ? 'primary' : 'ghost'}" onclick="renderAdmin('stats')">📊 الإحصائيات و المداخيل</button>
+      <button class="btn ${admTab === 'perms' ? 'primary' : 'ghost'}" onclick="renderAdmin('perms')">🔐 المستخدمون و الصلاحيات</button>
+    </div>
+    <div id="admPanel"></div>`;
+  if (admTab === 'stats') renderAdminStats(); else renderAdminPerms();
+  renderStoreBadge();
+}
+
+function renderAdminStats() {
+  const k = kpiStats();
+  const dep = DB.depense.reduce((s, d) => s + num(d.montant), 0);
+  const net = k.paid - dep;
+  const busy = busyArtIds().size;
+  /* التدفق النقدي الحقيقي : priloc في شهر datop + التحصيل في شهر payDate */
+  const byMonth = cashInByMonth();
+  const months = Object.keys(byMonth).sort().reverse().slice(0, 12);
+  const max = Math.max.apply(null, months.map(m => byMonth[m]).concat([1]));
+  const top = {};
+  DB.lines.forEach(d => { const a = artById(d.artId); if (a) top[a.nom] = (top[a.nom] || 0) + num(d.total); });
+  const topList = Object.entries(top).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const topMax = Math.max.apply(null, topList.map(t => t[1]).concat([1]));
+  const debtors = DB.clients.map(c => ({ c, d: DB.locs.filter(l => l.clientId === c.id).reduce((s, l) => s + remaining(l), 0) }))
+    .filter(x => x.d > 0).sort((a, b) => b.d - a.d).slice(0, 10);
+  const deps = DB.depense.slice().sort((a, b) => String(b.datdep || '').localeCompare(String(a.datdep || ''))).slice(0, 8);
+
+  $('admPanel').innerHTML = `
+    <div class="hero">
+      <div class="kpi rose"><div class="k">إجمالي الكراءات</div><div class="v">${money(k.tot)}</div></div>
+      <div class="kpi"><div class="k">المحصّل</div><div class="v green">${money(k.paid)}</div></div>
+      <div class="kpi"><div class="k">الديون المتبقية</div><div class="v red">${money(k.debt)}</div></div>
+      <div class="kpi"><div class="k">تحصيل اليوم</div><div class="v">${money(k.paidToday)}</div></div>
+      <div class="kpi"><div class="k">المصروفات</div><div class="v" style="color:var(--warn)">${money(dep)}</div></div>
+      <div class="kpi"><div class="k">الصافي (محصّل − مصروفات)</div><div class="v ${net >= 0 ? 'green' : 'red'}">${money(net)}</div></div>
+      <div class="kpi"><div class="k">كراءات اليوم</div><div class="v">${k.today}</div></div>
+      <div class="kpi"><div class="k">ما يعود اليوم</div><div class="v">${k.retToday}</div></div>
+      <div class="kpi"><div class="k">منتوجات مكراة الآن</div><div class="v">${busy}</div></div>
+      <div class="kpi"><div class="k">منتوجات / زبائن</div><div class="v">${DB.articles.length} / ${DB.clients.length}</div></div>
+    </div>
+    <div class="card"><h3><span class="dot"></span>المداخيل حسب الشهر</h3>
+      ${months.length ? months.map(m => `<div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px">
+        <span style="font-weight:700">${m}</span><span class="num" style="font-weight:800">${money(byMonth[m])}</span></div>
+        <div class="bar"><i style="width:${(byMonth[m] / max * 100).toFixed(1)}%"></i></div></div>`).join('') : '<p class="small">لا توجد مداخيل مسجلة</p>'}
+    </div>
+    <div class="card"><h3><span class="dot"></span>أكثر المنتوجات مردودية</h3>
+      ${topList.length ? topList.map(t => `<div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px">
+        <span>${esc(t[0])}</span><span class="num">${money(t[1])}</span></div>
+        <div class="bar"><i style="width:${(t[1] / topMax * 100).toFixed(1)}%"></i></div></div>`).join('') : '<p class="small">لا توجد كراءات</p>'}
+    </div>
+    <div class="card warnc"><h3><span class="dot"></span>أكبر الديون</h3>
+      ${debtors.length ? debtors.map(x => `<div class="kv"><span class="k">${esc(x.c.nom)} · ${esc(x.c.mobile || '')}</span><span class="v num red">${money(x.d)}</span></div>`).join('') : '<p class="small">لا توجد ديون</p>'}
+    </div>
+    <div class="card dangerc"><h3><span class="dot"></span>المصروفات</h3>
+      <div class="grid3">
+        <div class="field"><label>البيان</label><input id="dep_lib" placeholder="كراء المحل، كهرباء…"></div>
+        <div class="field"><label>المبلغ</label><input id="dep_mnt" type="number" step="0.01" value="0"></div>
+        <div class="field"><label>التاريخ</label><input id="dep_dt" type="date" value="${todayISO()}"></div>
+      </div>
+      <button class="btn primary block" onclick="addDepense()">➕ إضافة مصروف</button>
+      <div class="mt">${deps.length ? deps.map(d => `<div class="kv"><span class="k">${dISO(d.datdep)} — ${esc(d.designation || '—')}</span>
+        <span class="v num">${money(d.montant)} <button class="btn danger sm" onclick="delDepense('${d.id}')">✕</button></span></div>`).join('') : '<p class="small">لا توجد مصروفات</p>'}</div>
+    </div>
+    <div class="card"><h3><span class="dot"></span>الحفظ و النسخ الاحتياطي</h3>
+      <div class="btnrow">
+        <button class="btn ghost" onclick="dbForceSave()">💾 حفظ فوري</button>
+        <button class="btn ghost" onclick="openDataDir()">📂 مجلد البيانات</button>
+        <button class="btn ghost" onclick="exportAll()">⬇️ نسخة احتياطية</button>
+      </div>
+    </div>`;
+  renderStoreBadge();
+}
+
+function addDepense() {
+  const lib = ($('dep_lib').value || '').trim();
+  const mnt = num($('dep_mnt').value);
+  if (!lib) { toast('اكتب بيان المصروف', 'err'); return; }
+  if (!mnt) { toast('المبلغ غير صحيح', 'err'); return; }
+  DB.depense.push({ id: uid('dp'), num: DB.depense.length + 1, designation: lib, montant: mnt, datdep: $('dep_dt').value || todayISO() });
+  save(); renderAdmin('stats'); toast('تم تسجيل المصروف', 'ok');
+}
+function delDepense(id) {
+  if (!confirm('حذف هذا المصروف ؟')) return;
+  DB.depense = DB.depense.filter(d => d.id !== id);
+  save(); renderAdmin('stats'); toast('تم الحذف', 'ok');
+}
+
+/* ---------- الصلاحيات ---------- */
+function renderAdminPerms() {
+  $('admPanel').innerHTML = `
+    <div class="card accent"><h3><span class="dot"></span>المستخدمون و الصلاحيات</h3>
+      <p class="small">حدّد لكل مستخدم النماذج المسموح له بفتحها. المدير يملك كل الصلاحيات تلقائيا و لا يمكن تقييده.</p>
+      <button class="btn primary sm mt" onclick="openUser()">＋ مستخدم جديد</button>
+    </div>
+    <div class="permtable">${DB.users.map(u => userPermCard(u)).join('')}</div>`;
+}
+
+function userPermCard(u) {
+  const admin = u.role === 'admin';
+  return `<div class="urow">
+    <div class="uhead">
+      <span class="badge ${admin ? 'rose' : 'ok'}">${admin ? '👑 مدير' : '👤 مستخدم'}</span>
+      <b style="flex:1">${esc(u.nom)}</b>
+      <span class="badge ${u.actif === false ? 'out' : 'ok'}">${u.actif === false ? 'موقوف' : 'نشط'}</span>
+      <button class="btn ghost sm" onclick="openUser('${u.id}')">✏️ تعديل</button>
+      <button class="btn ghost sm" onclick="toggleUserActif('${u.id}')">${u.actif === false ? '▶️ تنشيط' : '⏸️ إيقاف'}</button>
+      ${admin ? '' : `<button class="btn danger sm" onclick="delUser('${u.id}')">🗑️</button>`}
+    </div>
+    <div class="ugrid">${FORM_LIST.map(p => {
+      const on = admin ? true : !!(u.perms && u.perms[p[0]]);
+      return `<label class="perm ${on ? 'on' : ''}" ${admin ? 'style="opacity:.65"' : ''}>
+        <input type="checkbox" ${on ? 'checked' : ''} ${admin ? 'disabled' : ''}
+        onchange="togglePerm('${u.id}','${p[0]}',this.checked)"> ${esc(p[1])}</label>`;
+    }).join('')}</div>
+    ${admin ? '' : `<div class="btnrow" style="margin-top:8px">
+      <button class="btn ok sm" onclick="grantAll('${u.id}',true)">✔ السماح للكل</button>
+      <button class="btn danger sm" onclick="grantAll('${u.id}',false)">✖ منع الكل</button>
+    </div>`}
+  </div>`;
+}
+
+function togglePerm(userId, screen, on) {
+  const u = DB.users.find(x => x.id === userId);
+  if (!u) return;
+  if (u.role === 'admin') { toast('المدير يملك كل الصلاحيات تلقائيا', 'err'); return; }
+  if (!u.perms) u.perms = {};
+  u.perms[screen] = !!on;
+  save();
+  renderAdminPerms();
+  toast(on ? '✔ تم السماح : ' + screen : '⛔ تم المنع : ' + screen, on ? 'ok' : '');
+}
+function grantAll(userId, on) {
+  const u = DB.users.find(x => x.id === userId);
+  if (!u || u.role === 'admin') return;
+  if (!u.perms) u.perms = {};
+  FORM_LIST.forEach(p => { u.perms[p[0]] = !!on; });
+  save(); renderAdminPerms();
+  toast(on ? 'تم السماح بكل النماذج' : 'تم منع كل النماذج', on ? 'ok' : 'err');
+}
+function toggleUserActif(userId) {
+  const u = DB.users.find(x => x.id === userId);
+  if (!u) return;
+  if (u.role === 'admin') { toast('لا يمكن إيقاف حساب المدير', 'err'); return; }
+  u.actif = u.actif === false;
+  save(); renderAdminPerms();
+  toast(u.actif === false ? 'تم إيقاف الحساب' : 'تم تنشيط الحساب', 'ok');
+}
+
+/* ---------- إدارة المستخدمين ---------- */
+function openUser(id) {
+  if (!isAdmin()) { toast('⛔ للمدير فقط', 'err'); return; }
+  const u = id ? DB.users.find(x => x.id === id) : null;
+  $('usrTitle').textContent = u ? 'تعديل المستخدم' : 'مستخدم جديد';
+  $('u_id').value = u ? u.id : '';
+  $('u_name').value = u ? u.nom : '';
+  $('u_pwd').value = '';
+  $('u_pwd').placeholder = u && (u.pwd_hash || u.pwd) ? 'اتركه فارغا للإبقاء على الحالية' : 'كلمة السر';
+  $('u_role').value = u ? (u.role === 'admin' ? 'admin' : 'user') : 'user';
+  $('u_actif').checked = u ? u.actif !== false : true;
+  openModal('m-user');
+}
+
+async function setUserPassword(u, pwd) {
+  const api = API();
+  if (api && api.auth_set_password) {
+    try {
+      const r = await api.auth_set_password(pwd);
+      if (r && r.ok) { u.pwd_hash = r.pwd_hash; u.salt = r.salt; delete u.pwd; return true; }
+    } catch (e) { }
+  }
+  u.pwd = pwd; delete u.pwd_hash; delete u.salt;
+  return true;
+}
+
+async function saveUser() {
+  const nom = ($('u_name').value || '').trim();
+  if (!nom) { toast('اسم المستخدم إلزامي', 'err'); return; }
+  const id = $('u_id').value;
+  const role = $('u_role').value === 'admin' ? 'admin' : 'user';
+  let u = id ? DB.users.find(x => x.id === id) : null;
+  const isNew = !u;
+  if (isNew) {
+    u = { id: uid('u'), nom: nom, role: role, actif: true, perms: {} };
+    FORM_LIST.forEach(p => { u.perms[p[0]] = defaultPerm(p[0]); });
+    DB.users.push(u);
+  }
+  if (id && u.role === 'admin' && role !== 'admin') {
+    const others = DB.users.filter(x => x.role === 'admin' && x.id !== u.id).length;
+    if (!others) { toast('لا يمكن إلغاء دور المدير الوحيد', 'err'); return; }
+  }
+  u.nom = nom;
+  u.role = role;
+  u.actif = $('u_actif').checked;
+  if (role === 'admin') u.perms = allPerms();
+  const pwd = $('u_pwd').value;
+  if (pwd) await setUserPassword(u, pwd);
+  save();
+  closeModal('m-user');
+  if (!$('lockOverlay').classList.contains('hidden')) populateUsers(); /* تحديث قائمة الدخول فورا */
+  if (admTab === 'perms') renderAdminPerms();
+  toast('تم حفظ المستخدم', 'ok');
+}
+
+function delUser(id) {
+  if (!isAdmin()) return;
+  const u = DB.users.find(x => x.id === id);
+  if (!u) return;
+  if (u.role === 'admin') { toast('لا يمكن حذف حساب المدير', 'err'); return; }
+  if (!confirm('حذف المستخدم « ' + u.nom + ' » ؟')) return;
+  DB.users = DB.users.filter(x => x.id !== id);
+  save(); renderAdminPerms(); toast('تم الحذف', 'ok');
+}
+
+/* ---------- قاعدة البيانات ---------- */
+function dbForceSave() {
+  const api = API();
+  if (!api || !api.db_save) { toast('⚠️ الحفظ التلقائي غير متاح في هذا الوضع', 'err'); return; }
+  flushSave().then(ok => {
+    if (ok) toast('💾 تم حفظ البيانات', 'ok');
+    renderStoreBadge();
+  });
+}
+function openDataDir() {
+  const api = API();
+  if (!api || !api.open_data_dir) { toast('⚠️ متاح فقط في تطبيق سطح المكتب', 'err'); return; }
+  api.open_data_dir().then(r => {
+    if (r && r.ok) toast('📂 ' + r.path, 'ok'); else toast('تعذر فتح المجلد', 'err');
+  });
+}
+
+/* ---------- استيراد سريع Access : loc + detailloc ---------- */
+let quickState = {};
+function quickAccess(kind, ev) {
+  const f = ev.target.files[0];
+  if (!f) return;
+  const table = kind === 'loc' ? 'locs' : 'lines';
+  const r = new FileReader();
+  r.onload = e => {
+    const dec = decodeBytes(e.target.result);
+    const delim = detectDelim(dec.txt);
+    const rows = parseCSV(dec.txt, delim);
+    if (rows.length < 2) { toast('الملف فارغ أو غير صالح', 'err'); return; }
+    const head = rows[0].map(h => String(h).trim());
+    const body = rows.slice(1);
+    const map = {};
+    TABLES[table].cols.forEach((c, index) => {
+      map[c[0]] = matchCol(head, c[2], index);
+    });
+    impCtx[table] = { head: head, body: body, delim: delim, enc: dec.enc, map: map };
+    doImport(table);
+    quickState[kind] = body.length;
+    const qi = $('quickInfo');
+    if (qi) qi.innerHTML = 'الكراءات : <b>' + (quickState.loc || 0) + '</b> سطر — التفاصيل : <b>' + (quickState.detailloc || 0) + '</b> سطر';
+  };
+  r.readAsArrayBuffer(f);
+}
+
+/* ==================================================================
+   رمز الدخول — يُدار كليا من طرف Python
+   ================================================================== */
+let LIC_STATE = { ok: false, activated: false, blocked: false, serial: '', clelicence: '', locs_count: 0 };
+/* plateforme de licence : 'desktop' (empreinte disque) ou 'web'/'mobile' (essai + e-mail) */
+function licPlatform() {
+  try { return (window.KLicense && KLicense.platform) ? KLicense.platform() : 'desktop'; } catch (e) { return 'desktop'; }
+}
+function isWebLic() { return licPlatform() === 'web' || licPlatform() === 'mobile'; }
+
+function setActState(activated) {
+  const el = $('actState');
+  if (el) el.textContent = activated ? '✅ التطبيق جاهز للاستخدام' : '⛔ التطبيق غير جاهز للاستخدام';
+}
+function showActError(msg) {
+  const e = $('actError');
+  if (!e) return;
+  e.textContent = msg || '';
+  if (msg) e.classList.add('show'); else e.classList.remove('show');
+}
+
+/* ligne d'état de l'essai (10 contrats) — Web / Mobile uniquement */
+function paintTrialLine() {
+  const el = $('actTrial');
+  if (!el) return;
+  if (!isWebLic() || !(window.KLicense && KLicense.trial)) { el.style.display = 'none'; return; }
+  const t = KLicense.trial();
+  el.style.display = 'block';
+  el.textContent = t.exhausted
+    ? '⛔ انتهت التجربة : ' + t.used + ' / ' + t.max + ' — التفعيل مطلوب لمواصلة الإضافة'
+    : '🎁 وضع التجربة : ' + t.used + ' / ' + t.max + ' — المتبقي : ' + t.remaining;
+}
+
+/* يُستدعى بعد نجاح كلمة السر : يفتح التطبيق أو يُظهر نموذج رمز الدخول */
+async function applyActivationGate() {
+  const api = API();
+  if (api && api.activation_status) {
+    try {
+      const st = await api.activation_status();
+      if (st && st.ok) {
+        LIC_STATE = st;
+        if (st.blocked) { showActivation(); return false; }
+        return true;
+      }
+    } catch (e) { }
+  }
+  /* sans pont Python (web / mobile) : l'essai ne bloque JAMAIS l'entrée,
+     il ne bloque que l'ajout au-delà de 10 contrats (voir saveRental) */
+  return true;
+}
+
+function fillActivationForm() {
+  const activated = isWebLic()
+    ? !!(window.KLicense && KLicense.state().verified)
+    : !!(LIC_STATE && LIC_STATE.activated);
+  const sw = $('act_serial_wrap'), iw = $('act_id_wrap');
+  if (isWebLic()) {
+    if (sw) sw.style.display = 'none';
+    if (iw) iw.style.display = '';
+    const em = (window.KLicense && (KLicense.savedEmail() || KLicense.identity())) || '';
+    if ($('act_id') && !$('act_id').value) $('act_id').value = em;
+  } else {
+    if (sw) sw.style.display = '';
+    if (iw) iw.style.display = 'none';
+  }
+  $('act_serial').value = (LIC_STATE && LIC_STATE.serial) || '';
+  setActState(activated);
+  showActError('');
+  paintTrialLine();
+  const keyInp = $('act_key');
+  if (activated) {
+    /* après l'enregistrement, le code reste affiché en lecture seule */
+    keyInp.value = (window.KLicense && KLicense.state().key) || LIC_STATE.clelicence || '';
+    keyInp.setAttribute('readonly', 'readonly');
+    if ($('act_id')) $('act_id').setAttribute('readonly', 'readonly');
+  } else {
+    keyInp.value = '';
+    keyInp.removeAttribute('readonly');
+    if ($('act_id')) $('act_id').removeAttribute('readonly');
+  }
+}
+
+async function showActivation() {
+  const api = API();
+  if (isWebLic() && window.KLicense && KLicense.verifySaved) {
+    /* re-vérifie la clé mémorisée (expiration / autre appareil) */
+    try {
+      const r = await KLicense.verifySaved();
+      if (!(r && r.ok)) { try { KLicense.markUnverified(); } catch (e) { } }
+    } catch (e) { }
+  } else if (api && api.activation_status && !(LIC_STATE && LIC_STATE.serial)) {
+    try { const st = await api.activation_status(); if (st && st.ok) LIC_STATE = st; } catch (e) { }
+  }
+  fillActivationForm();
+  $('actOverlay').classList.remove('hidden');
+  if (!!(LIC_STATE && LIC_STATE.activated) || (window.KLicense && KLicense.state().verified)) return;
+  if (!isWebLic() && !($('act_serial').value || '').trim() && api && api.drive_serial) {
+    try { const r = await api.drive_serial(); if (r && r.ok && r.serial) LIC_STATE.serial = String(r.serial); } catch (e) { }
+    $('act_serial').value = (LIC_STATE && LIC_STATE.serial) || '';
+  }
+  setTimeout(() => { try { (isWebLic() ? $('act_id') : $('act_key')).focus(); } catch (e) { } }, 80);
+}
+function openActivation() { showActivation(); }
+function closeActivation() { $('actOverlay').classList.add('hidden'); }
+
+/* ---------- activation WEB / MOBILE : e-mail (ou UUID) + clé RSA ---------- */
+async function tryActivateWeb() {
+  const id = (($('act_id') && $('act_id').value) || '').trim();
+  const key = (($('act_key') && $('act_key').value) || '').trim();
+  if (!id) { showActError('⚠️ أدخل البريد الإلكتروني'); return; }
+  if (id.indexOf('@') <= 0) { showActError('⚠️ البريد الإلكتروني غير صالح'); return; }
+  if (!key) { showActError('⚠️ أدخل رمز الدخول'); return; }
+  if (!window.KLicense || !KLicense.activate) { showActError('⚠️ الوحدة karaya-license.js غير محمّلة'); return; }
+  try {
+    const r = await KLicense.activate(id, key);
+    if (r && r.ok) {
+      fillActivationForm();
+      toast('✅ تم التفعيل بنجاح — استعمال غير محدود', 'ok');
+      setTimeout(() => { closeActivation(); try { refreshData(); } catch (e) { } }, 700);
+    } else {
+      const why = (r && r.reason) || '';
+      setActState(false);
+      showActError(why === 'expired' ? '❌ الرمز منتهي الصلاحية'
+        : why === 'serial' ? '❌ الرمز مخصص لمعرّف آخر (البريد الإلكتروني)'
+        : '❌ الرمز غير صحيح — حاول مرة أخرى');
+    }
+  } catch (e) {
+    showActError('❌ خطأ أثناء التحقق : ' + String(e && e.message || e));
+  }
+}
+
+async function tryActivate() {
+  if (isWebLic()) return tryActivateWeb();
+  const api = API();
+  const serial = ($('act_serial').value || '').trim();
+  const key = ($('act_key').value || '').trim();
+  if (!serial) { showActError('⚠️ رقم التعريف غير متوفر'); return; }
+  if (!key) { showActError('⚠️ أدخل رمز الدخول'); return; }
+  if (!api || !api.save_activation) { showActError('⚠️ هذا الخيار غير متاح في هذا الوضع'); return; }
+  const r = await api.save_activation(serial, key);
+  if (r && r.ok && r.activated) {
+    LIC_STATE = { ok: true, activated: true, blocked: false, serial: r.serial || serial, clelicence: key, locs_count: LIC_STATE.locs_count || 0 };
+    fillActivationForm();
+    toast('✅ تم الحفظ بنجاح', 'ok');
+    setTimeout(() => { closeActivation(); if (activeUser) bootApp(); }, 700);
+  } else {
+    setActState(false);
+    showActError('❌ الرمز غير صحيح — حاول مرة أخرى');
+  }
 }
 
 /* ================= التشغيل ================= */
