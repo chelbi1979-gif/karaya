@@ -79,7 +79,9 @@
       'أدخل عنوان المشروع و المفتاح العام': 'Renseignez l’URL et la clé anon',
       'النسخة السحابية أحدث. استبدال البيانات المحلية بالنسخة السحابية ؟\n(إلغاء = الاحتفاظ بالمحلي وإرساله)': 'La version cloud est plus récente. Remplacer les données locales par la version cloud ?\n(Annuler = garder le local et l’envoyer)',
       'تم حفظ الإعدادات — لن تُطلب مرة أخرى': 'Réglages enregistrés — ils ne seront plus demandés',
-      'مطلوب البريد و كلمة المرور لأول اتصال': 'E-mail + mot de passe requis pour la première connexion'
+      'مطلوب البريد و كلمة المرور لأول اتصال': 'E-mail + mot de passe requis pour la première connexion',
+      'اتصال': 'Connexion',
+      'فصل': 'Déconnecter'
     });
   }
 
@@ -89,7 +91,7 @@
     var st = document.createElement('style');
     st.id = 'kb-css';
     st.textContent =
-      '.kb-bg{position:fixed;inset:0;background:rgba(31,23,32,.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:14px}' +
+      '.kb-bg{position:fixed;inset:0;background:rgba(31,23,32,.55);display:flex;align-items:center;justify-content:center;z-index:99990;padding:14px}' +
       '.kb-card{background:#fff;border-radius:16px;width:100%;max-width:540px;max-height:92vh;overflow:auto;box-shadow:0 26px 60px -22px rgba(0,0,0,.5);border:1px solid #ecdfe6}' +
       '.kb-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:13px 15px;border-bottom:1px solid #ecdfe6;background:#fdf2f8;position:sticky;top:0}' +
       '.kb-head h3{margin:0;font-size:15px;font-weight:800;color:#9d174d}' +
@@ -299,11 +301,11 @@
       '      <input id="kb-pass" type="password" dir="ltr" autocomplete="current-password"></div>' +
       '    <label class="kb-chk"><input id="kb-signup" type="checkbox"> ' + t('إنشاء حساب جديد') + '</label>' +
       '    <div class="kb-row">' +
-      '      <button class="kb-btn ok" id="kb-connect" type="button">اتصال</button>' +
+      '      <button class="kb-btn ok" id="kb-connect" type="button">' + t('اتصال') + '</button>' +
       '      <button class="kb-btn" id="kb-save" type="button">' + t('حفظ الإعدادات') + '</button>' +
       '      <button class="kb-btn" id="kb-test" type="button">' + t('اختبار الاتصال') + '</button>' +
       '      <button class="kb-btn pri" id="kb-sync" type="button">' + t('مزامنة الآن') + '</button>' +
-      '      <button class="kb-btn dan" id="kb-disconnect" type="button">فصل</button>' +
+      '      <button class="kb-btn dan" id="kb-disconnect" type="button">' + t('فصل') + '</button>' +
       '    </div>' +
       '    <div class="kb-st" id="kb-status"></div>' +
       '  </div>' +
@@ -392,6 +394,7 @@
 
   function boot() {
     try { mount(); } catch (e) { }
+    startAuto();                     /* démarré AVANT le test : sinon jamais lancé */
     var c = cloudApi();
     if (!c) return;
     /* 1) récupérer la config mémorisée côté Python (survit à une
@@ -405,7 +408,6 @@
         else if (r && r.configured) setStatus(t('محلية'), 'warn');
       }).catch(function () { });
     } catch (e) { }
-    startAuto();
   }
 
   /* enregistrement des données distantes (realtime) */

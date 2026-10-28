@@ -171,23 +171,48 @@
       .catch(function (e) { return { ok: false, reason: 'error', detail: String(e) }; });
   }
 
+  /* ---- stockage tolerant -------------------------------------------
+     Si localStorage refuse l'écriture (Safari navigation privée, quota
+     dépassé, WebView sans storage), l'ancien code avalait l'erreur et le
+     compteur d'essai restait à 0 : aucune limite n'était jamais atteinte.
+     On garde donc une copie en mémoire pour la session courante. */
+  var _mem = {};
+  function lsGet(k) {
+    try { var v = localStorage.getItem(k); if (v !== null) return v; } catch (e) { }
+    return (k in _mem) ? _mem[k] : null;
+  }
+  function lsSet(k, v) {
+    _mem[k] = String(v);
+    try { localStorage.setItem(k, String(v)); return true; } catch (e) { return false; }
+  }
+
   var LSK = 'karaya_licence_v2';
-  function readLic() { try { return JSON.parse(localStorage.getItem(LSK) || '{}') || {}; } catch (e) { return {}; } }
-  function writeLic(o) { try { localStorage.setItem(LSK, JSON.stringify(o || {})); } catch (e) { } }
+  function readLic() { try { return JSON.parse(lsGet(LSK) || '{}') || {}; } catch (e) { return {}; } }
+  function writeLic(o) { lsSet(LSK, JSON.stringify(o || {})); }
 
   /* ==================================================================
      PLATEFORME — Desktop (empreinte disque) vs Web/Mobile (essai)
      ================================================================== */
+  /* un téléphone reste un téléphone, même si l'app est packagée en file://
+     (Capacitor / WebView / « mobile local ») : sinon platform() renvoyait
+     'desktop' et l'essai de 10 enregistrements ne s'appliquait JAMAIS. */
+  function isMobileUA() {
+    var ua = '';
+    try { ua = String(navigator.userAgent || ''); } catch (e) { }
+    if (/android|iphone|ipad|ipod|mobile|silk|kindle|opera mini|windows phone/i.test(ua)) return true;
+    try { if (navigator.maxTouchPoints > 1 && /macintosh/i.test(ua)) return true; } catch (e) { }
+    return false;
+  }
   function platform() {
     try {
       if (window.pywebview && window.pywebview.api) return 'desktop';
       if (window.KARAYA_PLATFORM === 'desktop' || window.KARAYA_PLATFORM === 'web' || window.KARAYA_PLATFORM === 'mobile') {
         return window.KARAYA_PLATFORM;
       }
+      /* AVANT le test file: — c'était la cause du mode essai inopérant */
+      if (isMobileUA()) return 'mobile';
       /* bundle PC ouvert en file:// dans WebView2 : pas de pont encore prêt */
       if (location.protocol === 'file:') return 'desktop';
-      var ua = String(navigator.userAgent || '');
-      if (/android|iphone|ipad|ipod|mobile|silk|kindle|opera mini/i.test(ua)) return 'mobile';
     } catch (e) { }
     return 'web';
   }
@@ -245,13 +270,13 @@
 
   function trialCount() {
     var n = 0;
-    try { n = parseInt(localStorage.getItem(TRIALK) || '0', 10); } catch (e) { n = 0; }
+    try { n = parseInt(lsGet(TRIALK) || '0', 10); } catch (e) { n = 0; }
     if (!isFinite(n) || isNaN(n) || n < 0) n = 0;
     return n;
   }
   function setTrialCount(n) {
     n = Math.max(0, parseInt(n, 10) || 0);
-    try { localStorage.setItem(TRIALK, String(n)); } catch (e) { }
+    lsSet(TRIALK, n);
     return n;
   }
   function trialInfo() {
