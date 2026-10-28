@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -8,7 +7,8 @@
 <title>نظام إدارة الكراء</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Noto+Naskh+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Noto+Naskh+Arabic:wght@400;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Noto+Naskh+Arabic:wght@400;600;700&display=swap" rel="stylesheet"></noscript>
 <style>
   :root{
     --bg:#f7f4f6;
@@ -377,6 +377,16 @@
   .thm[data-thm="fit"] .s{border-radius:8px;width:32px;height:16px}
   .thm[data-thm="soft"] .s{border-radius:12px;box-shadow:0 6px 12px -6px rgba(157,23,77,.75)}
   .hidden{display:none!important}
+  /* ---------- ÉCRAN DE DÉMARRAGE ---------- */
+  #kSplash{position:fixed;inset:0;z-index:100000;background:linear-gradient(135deg,#9d174d,#be185d 55%,#a21caf);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;transition:opacity .3s ease}
+  #kSplash.ks-off{opacity:0;pointer-events:none}
+  #kSplash .ks-logo{font-size:54px;line-height:1}
+  #kSplash .ks-bar{width:170px;height:5px;border-radius:99px;background:rgba(255,255,255,.25);overflow:hidden}
+  #kSplash .ks-bar i{display:block;width:40%;height:100%;background:#fff;border-radius:99px;animation:ksSlide 1.05s ease-in-out infinite}
+  @keyframes ksSlide{0%{transform:translateX(-105%)}100%{transform:translateX(265%)}}
+  #kSplash .ks-txt{font-size:13px;font-weight:700;letter-spacing:.3px;opacity:.95}
+  body.app-booting .app,
+  body.app-booting .bottomnav{visibility:hidden!important}
   .mt{margin-top:12px}
   .center{text-align:center}
   .small{font-size:11.5px}
@@ -516,8 +526,16 @@
 <link rel="manifest" href="manifest.webmanifest">
 </head>
 <body>
-<script>try{document.body.classList.add('btheme-'+(localStorage.getItem('karaya_btn_theme_v1')||'round'));}catch(e){try{document.body.classList.add('btheme-round');}catch(_){}}
+<script>try{document.body.classList.add('app-booting');}catch(e){}
+try{document.body.classList.add('btheme-'+(localStorage.getItem('karaya_btn_theme_v1')||'round'));}catch(e){try{document.body.classList.add('btheme-round');}catch(_){}}
 try{var _lt=localStorage.getItem('karaya_nav_layout_v1')||'classic';if(['classic','circle','right','left','table'].indexOf(_lt)<0)_lt='classic';document.body.classList.add('layout-'+_lt);}catch(e){try{document.body.classList.add('layout-classic');}catch(_){}}</script>
+
+<!-- écran de démarrage : masque la barre du haut tant que l'app n'est pas prête -->
+<div id="kSplash" aria-hidden="true">
+  <div class="ks-logo">👑</div>
+  <div class="ks-bar"><i></i></div>
+  <div class="ks-txt">جارٍ التحميل…</div>
+</div>
 
 <div id="lockOverlay" class="lock-overlay hidden" role="dialog" aria-modal="true">
   <div class="lock-card">
@@ -558,6 +576,7 @@ try{var _lt=localStorage.getItem('karaya_nav_layout_v1')||'classic';if(['classic
       <input id="act_key" type="text" placeholder="••••••" autocomplete="off">
     </div>
     <button class="lock-btn" type="button" onclick="tryActivate()">🔓 تأكيد</button>
+    <button id="actLater" class="lock-btn" type="button" style="display:none;background:#fff;color:#7c6f77;border:2px solid #ecdfe6;box-shadow:none;margin-top:9px" onclick="closeActivation()">لّاحقًا — متابعة الاستخدام</button>
     <div id="actError" class="lock-error" role="alert" aria-live="assertive"></div>
   </div>
 </div>
@@ -901,7 +920,7 @@ try{var _lt=localStorage.getItem('karaya_nav_layout_v1')||'classic';if(['classic
       <div id="payInfo"></div>
       <div class="grid2 mt">
         <div class="field"><label>تاريخ التحصيل</label><input id="pay_date" type="date"></div>
-        <div class="field"><label>المبلغ المحصل الآن</label><input id="pay_amount" type="number" step="0.01" value="0"></div>
+        <div class="field"><label>المبلغ المحصل الآن</label><input id="pay_amount" type="number" step="0.01" min="0" value="" oninput="payValidate()" onchange="payValidate()" inputmode="decimal"></div>
       </div>
       <div class="btnrow"><button class="btn ok sm" onclick="fillRest()">💰 دفع كامل الباقي</button></div>
       <div class="hint" id="payHint"></div>
@@ -1457,14 +1476,26 @@ function populateUsers() {
   });
   if (!users.length) showLockError('⚠️ لا يوجد مستخدم — أعد تشغيل التطبيق لإنشاء الحساب الافتراضي');
 }
+/* filet de securite : si une erreur survient au demarrage, l'ecran de
+   demarrage disparait quand meme (jamais d'application invisible). */
+setTimeout(function () { try { kSplashDone(); } catch (e) { } }, 7000);
+function kSplashDone() {
+  try { document.body.classList.remove('app-booting'); } catch (e) { }
+  const s = document.getElementById('kSplash');
+  if (!s) return;
+  s.classList.add('ks-off');
+  setTimeout(function () { if (s && s.parentNode) s.parentNode.removeChild(s); }, 380);
+}
 function showLock() {
   document.body.classList.add('app-locked');
+  kSplashDone();
   $('lockOverlay').classList.remove('hidden');
   populateUsers();
   setTimeout(() => { try { $('lockPwd').focus(); } catch (e) { } }, 80);
 }
 function bootApp() {
   document.body.classList.remove('app-locked');
+  kSplashDone();
   $('lockOverlay').classList.add('hidden');
   document.body.classList.toggle('role-admin', isAdmin());
   document.body.classList.toggle('role-user', !!activeUser && !isAdmin());
@@ -1556,6 +1587,12 @@ function contractTotal(lines, l) {
   return r2((lines || []).reduce((s, d) => s + lineTotal(d, l), 0));
 }
 function prilocOf(l) { return r2(num(l && l.priloc)); }
+/* الباقي الحقيقي القابل للتحصيل : يُحسب دائما من جديد (لا قيمة مخزّنة) */
+function payMaxOf(l) {
+  if (!l) return 0;
+  const m = r2(num(l.total) - paidOf(l));
+  return m > 0 ? m : 0;
+}
 function paieOf(l) { return r2(num(l && l.paie)); }
 function paidOf(l) { return r2(prilocOf(l) + paieOf(l)); }
 function resteOf(l) {
@@ -2644,6 +2681,12 @@ function _rentalSaveCore() {
   l.periode = Math.max(1, Math.min(diffDays(l.datloc, l.datret), DUR_MAX));
   editLines.forEach(d => { if (!d.datret) d.datret = l.datret; d.total = lineTotal(d, l); });
   l.total = contractTotal(editLines, l);
+  /* حماية : المبلغ المسبق لا يمكن أن يفوق مجموع الكراء */
+  if (num(l.priloc) > l.total) {
+    toast('⛔ المبلغ المسبق (' + money(num(l.priloc)) + ') أكبر من مجموع الكراء (' + money(l.total) + ')', 'err');
+    try { $('r_paid').focus(); } catch (e) { }
+    return;
+  }
   l.priloc = num(l.priloc);
   l.paie = num(l.paie);
   l.paid = paidOf(l);
@@ -3016,6 +3059,36 @@ function renderReturns(mode) {
 
 /* ================= الديون و التحصيل ================= */
 let dbScope = 'all';
+/* عقود فيها تحصيل يفوق مجموع الكراء (بيانات قديمة خاطئة) */
+function overpaidList() {
+  return (DB.locs || []).filter(l => l && r2(num(l.total) - paidOf(l)) < 0);
+}
+function overpayBanner() {
+  const list = overpaidList();
+  if (!list.length) return '';
+  const sum = r2(list.reduce((s, l) => s + (paidOf(l) - num(l.total)), 0));
+  return `<div class="note" style="border-color:#fecaca;background:#fef2f2;color:#b91c1c;font-weight:700">
+    ⚠️ ${list.length} عقد مسجّل فيه مبلغ محصّل أكبر من مجموع الكراء (+${money(sum)}) — المجاميع غير مضبوطة.<br>
+    <button class="btn danger sm" style="margin-top:8px" onclick="fixOverpayments()">🛠️ تصحيح تلقائي (قصّ الزائد)</button></div>`;
+}
+function fixOverpayments() {
+  const list = overpaidList();
+  if (!list.length) return;
+  if (!confirm('تصحيح ' + list.length + ' عقد : يُقصّ المبلغ المحصّل إلى حدود مجموع الكراء. هل تريد المتابعة ؟')) return;
+  list.forEach(l => {
+    const tot = r2(num(l.total));
+    let pr = prilocOf(l);
+    if (pr > tot) pr = tot;
+    l.priloc = pr;
+    const room = r2(tot - pr);
+    l.paie = room > 0 ? r2(Math.min(paieOf(l), room)) : 0;
+    l.paid = paidOf(l);
+    l.reste = resteOf(l);
+    l.datWarn = (l.datWarn ? l.datWarn + ' · ' : '') + 'تصحيح تحصيل زائد';
+  });
+  save(); renderDebts();
+  toast('✅ تم تصحيح ' + list.length + ' عقد', 'ok');
+}
 function renderDebts(scope) {
   if (scope) dbScope = scope;
   const t = todayISO();
@@ -3059,7 +3132,7 @@ function renderDebts(scope) {
   }
   const sT = list.reduce((s, l) => s + num(l.total), 0),
     sPr = list.reduce((s, l) => s + prilocOf(l), 0);
-  $('debtsBody').innerHTML = list.length ? `<div class="tblwrap"><table class="tbl"><thead><tr>
+  $('debtsBody').innerHTML = overpayBanner() + (list.length ? `<div class="tblwrap"><table class="tbl"><thead><tr>
     <th>اسم الزبون</th><th>تاريخ الكراء</th><th>المدة</th><th>المجموع</th><th>المبلغ المسبق</th><th>التحصيل</th><th>الباقي</th><th></th></tr></thead><tbody>
     ${list.map(l => `<tr>
       <td>${esc(cliName(l.clientId))}</td><td class="dt">${dISO(l.datloc)}</td><td class="num">${esc(durOf(l))}</td>
@@ -3070,38 +3143,100 @@ function renderDebts(scope) {
       <td><button class="btn primary sm" onclick="openPay('${l.id}')">تحصيل</button></td></tr>`).join('')}
     </tbody><tfoot><tr><td colspan="3">المجموع (${list.length})</td>
       <td class="num">${money(sT)}</td><td class="num">${money(sPr)}</td><td class="num">${money(sP)}</td><td class="num">${money(sR)}</td><td></td></tr></tfoot></table></div>`
-    : `<div class="empty"><div class="big">💳</div>لا توجد سجلات في هذه الفترة</div>`;
+    : `<div class="empty"><div class="big">💳</div>لا توجد سجلات في هذه الفترة</div>`);
 }
 function openPay(locId) {
-  const l = DB.locs.find(x => x.id === locId); if (!l) return;
+  const l = DB.locs.find(x => x.id === locId);
+  if (!l) { toast('⚠️ لا يوجد عقد مرتبط بهذا الدين', 'err'); return; }
+  const max = payMaxOf(l);
   $('pay_id').value = locId;
   $('pay_date').value = parseAnyDate(l.payDate) || todayISO();
   $('pay_amount').value = 0;
   $('pay_note').value = l.payNote || '';
+  /* الحد الأقصى المسموح = الباقي الحقيقي (يُحسب الآن لا من قيمة مخزّنة) */
+  const inp = $('pay_amount');
+  if (inp) {
+    inp.min = 0;
+    inp.max = max;
+    inp.value = '';
+    inp.style.borderColor = '';
+    inp.style.boxShadow = '';
+    inp.placeholder = max > 0 ? ('0 → ' + max) : '0';
+  }
   $('payInfo').innerHTML = `<div class="note"><b>${esc(cliName(l.clientId))}</b> — كراء رقم ${esc(l.num)}<br>
     المجموع : <b class="num">${money(l.total)}</b><br>
     المبلغ المسبق : <b class="num">${money(prilocOf(l))}</b> — التحصيل : <b class="num">${money(paieOf(l))}</b><br>
-    الباقي : <b class="num">${money(resteOf(l))}</b></div>`;
+    الباقي : <b class="num">${money(max)}</b></div>`;
   const h = $('payHint');
-  if (h) h.innerHTML = '';
+  if (h) { h.style.color = ''; h.innerHTML = max > 0
+    ? 'الحد الأقصى : <b class="num">' + money(max) + '</b> — لا يمكن تحصيل أكثر من الباقي.'
+    : '⚠️ هذا العقد مسدد بالكامل — لا يوجد باقي للتحصيل.'; }
+  payValidate();
   openModal('m-pay');
+}
+/* تحقّق فوري أثناء الكتابة : يمنع أي مبلغ > الباقي أو ≤ 0 */
+function payValidate() {
+  const l = DB.locs.find(x => x.id === $('pay_id').value);
+  const h = $('payHint'), inp = $('pay_amount');
+  if (!l || !inp) return true;
+  const max = payMaxOf(l), add = r2(num(inp.value));
+  let bad = '';
+  if (max <= 0) bad = '⚠️ العقد مسدد بالكامل — لا يوجد باقي للتحصيل.';
+  else if (add > max) bad = '⛔ المبلغ (' + money(add) + ') أكبر من الباقي (' + money(max) + ').';
+  inp.style.borderColor = bad ? '#b91c1c' : '';
+  inp.style.boxShadow = bad ? '0 0 0 3px #fee2e2' : '';
+  if (h) {
+    h.style.color = bad ? '#b91c1c' : '';
+    h.innerHTML = bad || ('الحد الأقصى : <b class="num">' + money(max) + '</b> — الباقي بعد التحصيل : <b class="num">' + money(Math.max(0, max - add)) + '</b>');
+  }
+  return !bad;
 }
 function fillRest() {
   const l = DB.locs.find(x => x.id === $('pay_id').value); if (!l) return;
-  $('pay_amount').value = resteOf(l);
+  const max = payMaxOf(l);
+  $('pay_amount').value = max;
+  payValidate();
 }
 function savePayment() {
   const l = DB.locs.find(x => x.id === $('pay_id').value); if (!l) return;
-  const add = num($('pay_amount').value);
-  if (add < 0) { toast('المبلغ غير صالح', 'err'); return; }
+  const max = payMaxOf(l);
+  /* --- garde-fous : plus aucun montant hors bornes n'est enregistré --- */
+  if (max <= 0) {
+    toast('⛔ العقد مسدد بالكامل (الباقي = 0) — لا يمكن تسجيل تحصيل جديد', 'err');
+    payValidate(); return;
+  }
+  const raw = String($('pay_amount').value == null ? '' : $('pay_amount').value).trim();
+  if (raw === '') { toast('⚠️ أدخل المبلغ المحصل', 'err'); try { $('pay_amount').focus(); } catch (e) { } return; }
+  const add = r2(num(raw));
+  if (!(add > 0)) { toast('⚠️ المبلغ يجب أن يكون أكبر من صفر', 'err'); payValidate(); return; }
+  if (add > max) {
+    toast('⛔ المبلغ (' + money(add) + ') أكبر من الباقي (' + money(max) + ') — تم الرفض', 'err');
+    if (!payValidate()) { try { $('pay_amount').focus(); $('pay_amount').select(); } catch (e) { } }
+    return;
+  }
   l.paie = r2(paieOf(l) + add);
   l.priloc = prilocOf(l);
   l.paid = paidOf(l);
   l.reste = resteOf(l);
   l.payDate = $('pay_date').value || todayISO();
   if ($('pay_note').value.trim()) l.payNote = $('pay_note').value.trim();
-  save(); closeModal('m-pay'); renderDebts();
+  save(); closeModal('m-pay');
+  refreshOpenScreen('debts');
   toast('تم تحصيل ' + money(add) + ' — الباقي : ' + money(l.reste), 'ok');
+}
+/* redessine l'écran affiché après une écriture (totaux toujours à jour) */
+function refreshOpenScreen(fallback) {
+  try {
+    const cur = document.querySelector('.screen.active');
+    const n = cur ? cur.id.replace('s-', '') : (fallback || '');
+    const R = {
+      debts: renderDebts, income: () => renderIncome('today'), home: renderHome,
+      clients: renderClients, caisse: renderCaisse, admin: () => go('admin'),
+      rentals: renderDebts
+    };
+    if (n && R[n]) R[n]();
+    else if (fallback && renderDebts) renderDebts();
+  } catch (e) { }
 }
 
 /* ================= المداخيل ================= */
@@ -4575,8 +4710,25 @@ async function applyActivationGate() {
       }
     } catch (e) { }
   }
-  /* sans pont Python (web / mobile) : l'essai ne bloque JAMAIS l'entrée,
-     il ne bloque que l'ajout au-delà de 10 contrats (voir saveRental) */
+  /* ---- WEB / MOBILE (aucun pont Python) ----
+     L'entrée reste possible (consultation des données), MAIS si la licence
+     n'est pas vérifiée et que l'essai (10 enregistrements) est épuisé,
+     le formulaire de licence s'ouvre AUTOMATIQUEMENT à l'entrée. */
+  if (window.KLicense) {
+    try {
+      const st = KLicense.state() || {};
+      let licensed = !!st.verified;
+      if (!licensed && st.key && KLicense.verifySaved) {
+        try { const r = await KLicense.verifySaved(); licensed = !!(r && r.ok); } catch (e) { }
+      }
+      if (!licensed) {
+        const t = (KLicense.trial ? KLicense.trial() : null) || { exhausted: false };
+        if (t.exhausted) {
+          setTimeout(() => { try { showActivation(); } catch (e) { } }, 220);
+        }
+      }
+    } catch (e) { }
+  }
   return true;
 }
 
@@ -4598,6 +4750,9 @@ function fillActivationForm() {
   setActState(activated);
   showActError('');
   paintTrialLine();
+  /* bouton « plus tard » : masqué seulement si le blocage est total (desktop) */
+  const later = $('actLater');
+  if (later) later.style.display = (!activated && !(LIC_STATE && LIC_STATE.blocked)) ? 'block' : 'none';
   const keyInp = $('act_key');
   if (activated) {
     /* après l'enregistrement, le code reste affiché en lecture seule */
@@ -4686,13 +4841,19 @@ async function initApp() {
      est fausse (comptes manquants ou en double) */
   if (initApp._done) return;
   initApp._done = true;
+  /* Démarrage : on n'attend le pont Python QUE si l'application est
+     empaquetée (file://). Sur le web / mobile en http(s) il n'y a aucun
+     pont : l'ancienne attente de 5 s faisait apparaître la barre du haut
+     seule, puis le reste de l'interface. */
+  const _packaged = (location.protocol === 'file:');
   const t0 = Date.now();
-  while (!(window.pywebview && window.pywebview.api) && Date.now() - t0 < 5000) {
-    await new Promise(r => setTimeout(r, 100));
+  while (_packaged && !(window.pywebview && window.pywebview.api) && Date.now() - t0 < 3000) {
+    await new Promise(r => setTimeout(r, 40));
   }
   await loadFromDisk();
   normalizeDB();
-  checkSession();
+  await checkSession();
+  kSplashDone();
 }
 
 window.addEventListener('pywebviewready', () => {
@@ -4758,7 +4919,6 @@ window.KarayaApp = {
 <script src="karaya-store.js"></script>
 <script src="karaya-boot.js"></script>
 <script>if('serviceWorker' in navigator && location.protocol==='https:'){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
