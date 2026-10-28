@@ -24,9 +24,6 @@ var KARAYA_FR = {
 "تحديث البيانات (Actualiser)":"Actualiser les données",
 "توزيع الأزرار في الواجهة":"Disposition des boutons",
 "استيراد / تصدير":"Importer / Exporter","الإعدادات":"Paramètres",
- "ما يعود غدا":"Retours de demain",
-"حجوزات اليوم":"Réservations du jour",
-"ضبط الصندوق":"Configuration de la caisse",
 "تسجيل الخروج":"Déconnexion","تسجيل الخروج — قفل التطبيق":"Déconnexion — verrouiller",
 "＋ منتوج جديد":"＋ Nouvel article","كل الحالات":"Tous les états",
 "متوفر الآن":"Disponible","مكرى حاليا":"En location","مكراة حاليا":"En location",
@@ -162,9 +159,13 @@ var KARAYA_FR = {
 "مستخدم":"Utilisateur","مدير":"Administrateur","الصلاحيات":"Permissions",
 "السماح":"Autoriser","منع":"Interdire","✔ السماح للكل":"✔ Tout autoriser",
 "✖ منع الكل":"✖ Tout bloquer","اسم المستخدم":"Nom d'utilisateur",
-"هذا الحساب":"Ce compte","حذف الحساب":"Supprimer le compte",
+"هذا الحساب":"Ce compte","حذف الحساب":"Supprimer the compte",
 "اتركه فارغا للإبقاء على الحالية":"Laisser vide pour conserver l'actuel",
-"معلومات المحل والحساب":"Magasin & compte"
+"معلومات المحل والحساب":"Magasin & compte",
+/* --- Ajouts pour la traduction des 3 boutons --- */
+"ما يعود غدا":"Retours de demain",
+"حجزوزات اليوم":"Réservations du jour",
+"ضبط الصندوق":"Configuration de la caisse"
 };
 (function () {
   'use strict';
