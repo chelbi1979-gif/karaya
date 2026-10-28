@@ -1,368 +1,460 @@
 /* =====================================================================
-   karaya-boot.js — Câblage : langue, licence unifiée, cloud + migration
-   Chargé APRÈS le script principal : accès direct à DB / save() / toast()
+   karaya-boot.js — Fenêtre unique : boutons LANGUE (ع/FR) + CLOUD
+   =====================================================================
+   POURQUOI CE FICHIER EXISTE (et pourquoi l'interface le perdait) :
+   index.html charge <script src="karaya-boot.js"> en fin de page.
+   Si ce fichier est absent du bundle PyInstaller/PyArmor, la requête
+   renvoie 404 : les boutons « ع/FR » et « ☁️ » n'existent plus dans la
+   barre supérieure, et le module karaya-i18n.js n'est jamais piloté.
+   => C'est exactement le symptôme « la traduction ar/fr et le cloud
+      disparaissent ».
+
+   RÈGLES DE CONCEPTION (à ne pas casser) :
+     * Aucune logique Supabase ici      -> karaya-store.js
+     * Aucune synthèse de requête ici   -> karaya-store.js
+     * Aucun accès aux <input> par leur libellé : uniquement des ids
+       stables (#kb-url, #kb-anon, ...). C'était la cause des champs
+       vides au redémarrage.
+     * La configuration (URL + clé anon) est saisie UNE SEULE FOIS :
+       elle est écrite dans localStorage ET dans
+       %APPDATA%\Karaya\cloud.json via pywebview (save_cloud_config).
+       Au démarrage suivant, refresh() la relit : plus rien à saisir.
    ===================================================================== */
 (function () {
   'use strict';
-  var T = function (ar, fr) { return (window.I18N && I18N.lang === 'fr') ? fr : ar; };
+
+  var VERSION = '2.0';
+  var built = false;
+  var autoTimer = null;
+  var lastSyncAt = '';
+
   function $(id) { return document.getElementById(id); }
+  function val(id) { var e = $(id); return e ? String(e.value || '').trim() : ''; }
+  function store() { return window.KStore || null; }
+  function cloudApi() { return window.KarayaCloud || null; }
+  function pyapi() { return (window.pywebview && window.pywebview.api) ? window.pywebview.api : null; }
+  function app() { return window.KarayaApp || null; }
+  function t(ar) {
+    try { return (window.I18N && window.I18N.tr) ? window.I18N.tr(ar) : ar; } catch (e) { return ar; }
+  }
 
-  /* ---------------- 1. Bouton de langue dans la barre ---------------- */
-  function langButton() {
-    var bar = document.querySelector('.topactions');
-    if (!bar || $('btnLang')) return;
-    var b = document.createElement('button');
-    b.id = 'btnLang'; b.className = 'icobtn'; b.type = 'button';
-    b.style.cssText = 'background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;font-weight:800';
-    b.textContent = (window.I18N && I18N.lang === 'fr') ? 'FR' : 'ع';
-    b.title = T('تغيير اللغة — Français', 'Changer la langue — العربية');
-    b.onclick = function () {
-      var next = (I18N.lang === 'fr') ? 'ar' : 'fr';
-      I18N.set(next);
-      b.textContent = next === 'fr' ? 'FR' : 'ع';
-      b.title = T('تغيير اللغة — Français', 'Changer la langue — العربية');
-      if ($('kcloudOverlay') && !$('kcloudOverlay').classList.contains('hidden')) renderCloud();
+  /* ---------- DB de l'application (exposée par index.html) ---------- */
+  function getDB() {
+    var a = app();
+    try { return a && a.getDB ? a.getDB() : null; } catch (e) { return null; }
+  }
+  function setDB(d) {
+    var a = app();
+    if (!a || !a.setDB) return false;
+    try { return !!a.setDB(d); } catch (e) { return false; }
+  }
+
+  /* ---------- traductions des libellés de cette fenêtre ---------- */
+  function addI18n() {
+    if (!window.I18N || !window.I18N.add) return;
+    window.I18N.add({
+      'اللغة': 'Langue',
+      'ربط السحابة': 'Connexion cloud',
+      'عنوان المشروع': 'URL du projet',
+      'المفتاح العام': 'Clé anon (publique)',
+      'البريد الإلكتروني': 'E-mail',
+      'كلمة المرور': 'Mot de passe',
+      'إنشاء حساب جديد': 'Créer le compte',
+      'حفظ الإعدادات': 'Enregistrer',
+      'اختبار الاتصال': 'Tester',
+      'مزامنة الآن': 'Synchroniser',
+      'إغلاق': 'Fermer',
+      'يُدخل مرة واحدة فقط ثم يُحفظ تلقائيا': 'Saisi une seule fois, puis mémorisé',
+      'السحابة': 'Cloud',
+      'غير مضبوطة': 'non configurée',
+      'متصلة': 'connectée',
+      'محلية': 'locale',
+      'لم يتم ضبط السحابة بعد': 'Cloud pas encore configuré',
+      'تم الإرسال إلى السحابة': 'Envoyé vers le cloud',
+      'تم التحديث من السحابة': 'Mis à jour depuis le cloud',
+      'كل شيء محدّث': 'Tout est à jour',
+      'جاري الاتصال…': 'Connexion…',
+      'جاري المزامنة…': 'Synchronisation…',
+      'تعذر الاتصال': 'Connexion impossible',
+      'أدخل عنوان المشروع و المفتاح العام': 'Renseignez l’URL et la clé anon',
+      'النسخة السحابية أحدث. استبدال البيانات المحلية بالنسخة السحابية ؟\n(إلغاء = الاحتفاظ بالمحلي وإرساله)': 'La version cloud est plus récente. Remplacer les données locales par la version cloud ?\n(Annuler = garder le local et l’envoyer)',
+      'تم حفظ الإعدادات — لن تُطلب مرة أخرى': 'Réglages enregistrés — ils ne seront plus demandés',
+      'مطلوب البريد و كلمة المرور لأول اتصال': 'E-mail + mot de passe requis pour la première connexion'
+    });
+  }
+
+  /* ---------- styles ---------- */
+  function addCss() {
+    if ($('kb-css')) return;
+    var st = document.createElement('style');
+    st.id = 'kb-css';
+    st.textContent =
+      '.kb-bg{position:fixed;inset:0;background:rgba(31,23,32,.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:14px}' +
+      '.kb-card{background:#fff;border-radius:16px;width:100%;max-width:540px;max-height:92vh;overflow:auto;box-shadow:0 26px 60px -22px rgba(0,0,0,.5);border:1px solid #ecdfe6}' +
+      '.kb-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:13px 15px;border-bottom:1px solid #ecdfe6;background:#fdf2f8;position:sticky;top:0}' +
+      '.kb-head h3{margin:0;font-size:15px;font-weight:800;color:#9d174d}' +
+      '.kb-x{border:0;background:#fff;color:#7c6f77;border-radius:9px;width:30px;height:30px;font-size:15px;cursor:pointer}' +
+      '.kb-body{padding:13px 15px}' +
+      '.kb-f{margin-bottom:10px}' +
+      '.kb-f label{display:block;font-size:12px;font-weight:700;color:#7c6f77;margin-bottom:4px}' +
+      '.kb-f input{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid #ecdfe6;border-radius:10px;font-size:13px;font-family:inherit;color:#1f1720;background:#fff}' +
+      '.kb-f input:focus{outline:0;border-color:#9d174d;box-shadow:0 0 0 3px #fdf2f8}' +
+      '.kb-chk{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#7c6f77;margin:2px 0 10px}' +
+      '.kb-hint{font-size:11.5px;color:#7c6f77;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:7px 9px;margin-bottom:11px;line-height:1.5}' +
+      '.kb-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}' +
+      '.kb-btn{border:1px solid #ecdfe6;background:#fff;color:#1f1720;border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer}' +
+      '.kb-btn.pri{background:#9d174d;border-color:#9d174d;color:#fff}' +
+      '.kb-btn.ok{background:#ecfdf5;border-color:#a7f3d0;color:#047857}' +
+      '.kb-btn.dan{background:#fef2f2;border-color:#fecaca;color:#b91c1c}' +
+      '.kb-btn[disabled]{opacity:.55;cursor:not-allowed}' +
+      '.kb-st{margin-top:11px;font-size:12px;border-radius:10px;padding:8px 10px;background:#f7f4f6;color:#7c6f77;min-height:18px;line-height:1.5;word-break:break-word;direction:ltr;text-align:left}' +
+      '.kb-st.ok{background:#ecfdf5;color:#047857}' +
+      '.kb-st.err{background:#fef2f2;color:#b91c1c}' +
+      '.kb-st.warn{background:#fffbeb;color:#b45309}' +
+      '#btnCloud.kb-on{background:#ecfdf5!important;color:#047857!important;border-color:#a7f3d0!important}' +
+      '#btnCloud.kb-off{background:#f7f4f6!important;color:#7c6f77!important}';
+    document.head.appendChild(st);
+  }
+
+  function setStatus(msg, kind) {
+    var el = $('kb-status');
+    if (!el) return;
+    el.className = 'kb-st' + (kind ? ' ' + kind : '');
+    el.textContent = msg || '';
+  }
+
+  /* ---------- persistance minimale (sans connexion) ---------- */
+  function persistCfg() {
+    var s = store();
+    var url = val('kb-url'), anon = val('kb-anon'), email = val('kb-email');
+    if (!url || !anon) { setStatus(t('أدخل عنوان المشروع و المفتاح العام'), 'warn'); return false; }
+    if (s && s.saveCfg) s.saveCfg({ url: url, anon: anon, email: email, mode: 'hybrid' });
+    var p = pyapi();
+    if (p && p.save_cloud_config) {
+      try {
+        Promise.resolve(p.save_cloud_config(url, anon, email, true)).catch(function () { });
+      } catch (e) { }
+    }
+    return true;
+  }
+
+  /* ---------- synchronisation ---------- */
+  function doSync(silent) {
+    var s = store();
+    if (!s) { if (!silent) setStatus('KStore absent', 'err'); return Promise.resolve(null); }
+    if (!s.isConfigured()) {
+      if (!silent) setStatus(t('لم يتم ضبط السحابة بعد'), 'warn');
+      return Promise.resolve(null);
+    }
+    if (!silent) setStatus(t('جاري المزامنة…'));
+    return s.sync(getDB()).then(function (r) {
+      if (!r) return null;
+      if (r.ok && r.action === 'pull' && r.db) {
+        setDB(r.db);
+        if (s.markSynced) s.markSynced(r.rev);
+        lastSyncAt = new Date().toLocaleTimeString();
+        if (!silent) setStatus(t('تم التحديث من السحابة') + ' — ' + lastSyncAt, 'ok');
+      } else if (r.ok && r.action === 'push') {
+        if (s.markSynced) s.markSynced(r.rev || s.state.rev);
+        lastSyncAt = new Date().toLocaleTimeString();
+        if (!silent) setStatus(t('تم الإرسال إلى السحابة') + ' — ' + lastSyncAt, 'ok');
+      } else if (r.ok && r.action === 'conflict') {
+        var keep = window.confirm(t('النسخة السحابية أحدث. استبدال البيانات المحلية بالنسخة السحابية ؟\n(إلغاء = الاحتفاظ بالمحلي وإرساله)'));
+        if (keep) {
+          setDB(r.db);
+          if (s.markSynced) s.markSynced(r.rev);
+          setStatus(t('تم التحديث من السحابة'), 'ok');
+        } else if (s.markDirty) {
+          s.markDirty();
+          s.push(getDB());
+          setStatus(t('تم الإرسال إلى السحابة'), 'ok');
+        }
+      } else if (!r.ok) {
+        if (!silent) setStatus(r.error || 'erreur', 'err');
+      } else if (!silent) {
+        setStatus(t('كل شيء محدّث'), 'ok');
+      }
+      paintBadge();
+      return r;
+    }).catch(function (e) {
+      if (!silent) setStatus(String(e && e.message || e), 'err');
+      paintBadge();
+      return null;
+    });
+  }
+
+  function btnBusy(on) {
+    ['kb-connect', 'kb-save', 'kb-test', 'kb-sync'].forEach(function (id) {
+      var b = $(id); if (b) b.disabled = !!on;
+    });
+  }
+
+  /* ---------- actions de la fenêtre ---------- */
+  function onConnect() {
+    var c = cloudApi(), s = store();
+    var o = {
+      url: val('kb-url'), anon: val('kb-anon'), email: val('kb-email'),
+      password: ($('kb-pass') ? $('kb-pass').value : ''),
+      signUp: !!($('kb-signup') && $('kb-signup').checked)
     };
-    bar.insertBefore(b, bar.firstChild);
+    if (!o.url || !o.anon) { setStatus(t('أدخل عنوان المشروع و المفتاح العام'), 'warn'); return; }
+    persistCfg();                       /* enregistré même si le mot de passe est faux */
+    if (!c || !s) { setStatus('KStore / KarayaCloud absents', 'err'); return; }
+    btnBusy(true);
+    setStatus(t('جاري الاتصال…'));
+    c.connect(o).then(function (r) {
+      btnBusy(false);
+      setStatus((r && r.email ? r.email : '') + ' ✓', 'ok');
+      if ($('kb-pass')) $('kb-pass').value = '';
+      prefill();
+      paintBadge();
+      return doSync(false);
+    }).catch(function (e) {
+      btnBusy(false);
+      var m = String(e && e.message || e);
+      if (/password|E-mail/i.test(m) && !o.password) m = t('مطلوب البريد و كلمة المرور لأول اتصال');
+      setStatus(m, 'err');
+      paintBadge();
+    });
   }
 
-  /* ---------------- 2. Bouton Cloud ---------------- */
-  function cloudButton() {
-    var bar = document.querySelector('.topactions');
-    if (!bar || $('btnCloud')) return;
-    var b = document.createElement('button');
-    b.id = 'btnCloud'; b.className = 'icobtn'; b.type = 'button';
-    b.style.cssText = 'background:#eef2ff;color:#3730a3;border-color:#c7d2fe';
-    b.textContent = '☁️';
-    b.title = T('النسخ السحابي — المزامنة', 'Cloud & synchronisation');
-    b.onclick = openCloud;
-    bar.insertBefore(b, bar.firstChild);
+  function onDisconnect() {
+    var c = cloudApi();
+    if (!c) return;
+    c.disconnect().then(function () {
+      setStatus(t('محلية'), 'warn');
+      if ($('kb-pass')) $('kb-pass').value = '';
+      prefill();
+      paintBadge();
+    });
   }
 
-  /* ---------------- 3. Feuille de style de la fenêtre cloud ---------- */
-  function style() {
-    if ($('kcloudStyle')) return;
-    var s = document.createElement('style');
-    s.id = 'kcloudStyle';
-    s.textContent = [
-      '.kc-overlay{position:fixed;inset:0;background:rgba(31,23,32,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:18px}',
-      '.kc-overlay.hidden{display:none}',
-      '.kc-card{background:#fff;border-radius:16px;max-width:720px;width:100%;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.25);font-family:Cairo,Noto Naskh Arabic,system-ui,sans-serif}',
-      '.kc-card h3{margin:0 0 4px;color:#9d174d;font-size:19px}',
-      '.kc-sub{color:#7c6f77;font-size:12.5px;margin-bottom:12px;line-height:1.5}',
-      '.kc-row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}',
-      '.kc-row>*{flex:1;min-width:150px}',
-      '.kc-card input,.kc-card select{padding:9px 10px;border:1px solid #ecdfe6;border-radius:10px;font:inherit;font-size:13px;background:#fff;width:100%;box-sizing:border-box}',
-      '.kc-card label{font-size:12px;font-weight:700;color:#7c6f77;display:block;margin-bottom:3px}',
-      '.kc-btn{padding:10px 14px;border-radius:10px;border:1px solid #ecdfe6;background:#fff;font:inherit;font-weight:700;font-size:13px;cursor:pointer}',
-      '.kc-btn.p{background:#9d174d;color:#fff;border-color:transparent}',
-      '.kc-btn.g{background:#ecfdf5;color:#047857;border-color:#a7f3d0}',
-      '.kc-btn.d{background:#fef2f2;color:#b91c1c;border-color:#fecaca}',
-      '.kc-btn:disabled{opacity:.5;cursor:not-allowed}',
-      '.kc-badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:800}',
-      '.kc-b-ok{background:#ecfdf5;color:#047857}.kc-b-off{background:#fef2f2;color:#b91c1c}.kc-b-wait{background:#fffbeb;color:#b45309}',
-      '.kc-step{background:#fdf2f8;border:1px solid #f9a8d4;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:12.5px;line-height:1.6}',
-      '.kc-step b{color:#9d174d}',
-      '.kc-out{background:#0f172a;color:#a7f3d0;font-family:ui-monospace,monospace;font-size:11.5px;padding:10px;border-radius:10px;max-height:160px;overflow:auto;white-space:pre-wrap;word-break:break-all}',
-      '.kc-close{float:right;border:0;background:#f7f4f6;color:#7c6f77;border-radius:8px;width:30px;height:30px;font-size:16px;cursor:pointer}',
-      '.kc-tab{display:flex;gap:6px;margin:6px 0 12px;flex-wrap:wrap}',
-      '.kc-tab button{flex:0 0 auto;padding:7px 13px;border-radius:999px;border:1px solid #ecdfe6;background:#fff;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;color:#7c6f77}',
-      '.kc-tab button.on{background:#9d174d;color:#fff;border-color:transparent}',
-      'html[dir=ltr] .kc-card{direction:ltr;text-align:left}',
-      'html[dir=ltr] body{font-family:Cairo,system-ui,sans-serif}',
-      'html[dir=ltr] .topbar,html[dir=ltr] .screenhead,html[dir=ltr] .tile,html[dir=ltr] table{direction:ltr}',
-      'html[dir=ltr] .back{transform:scaleX(-1)}'
-    ].join('\n');
-    document.head.appendChild(s);
+  function onTest() {
+    var c = cloudApi();
+    if (!c) { setStatus('KarayaCloud absent', 'err'); return; }
+    persistCfg();
+    btnBusy(true);
+    setStatus(t('جاري الاتصال…'));
+    c.test().then(function (r) {
+      btnBusy(false);
+      if (r && r.ok) {
+        setStatus('OK — table ' + 'karaya_docs' + (r.exists ? ' / doc présent (rev ' + r.rev + ')' : ' / vide'), 'ok');
+      } else if (r && r.schema) {
+        setStatus('Table karaya_docs ABSENTE : exécutez le SQL fourni dans Supabase → SQL Editor.\n' + (r.error || ''), 'err');
+      } else {
+        setStatus((r && r.error) || 'erreur', 'err');
+      }
+    }).catch(function (e) {
+      btnBusy(false);
+      setStatus(String(e && e.message || e), 'err');
+    });
   }
 
-  /* ---------------- 4. Fenêtre Cloud / Licence / Migration ----------- */
-  var tab = 'cloud';
-
-  function overlay() {
-    if ($('kcloudOverlay')) return $('kcloudOverlay');
-    var d = document.createElement('div');
-    d.id = 'kcloudOverlay'; d.className = 'kc-overlay hidden';
-    d.innerHTML = '<div class="kc-card" id="kcCard"></div>';
-    d.addEventListener('click', function (e) { if (e.target === d) closeCloud(); });
-    document.body.appendChild(d);
-    return d;
+  function onSaveOnly() {
+    if (persistCfg()) setStatus(t('تم حفظ الإعدادات — لن تُطلب مرة أخرى'), 'ok');
   }
-  function openCloud() { style(); overlay().classList.remove('hidden'); renderCloud(); }
-  function closeCloud() { if ($('kcloudOverlay')) $('kcloudOverlay').classList.add('hidden'); }
-  window.openCloud = openCloud;
 
-  function tabs() {
-    return '<div class="kc-tab">' +
-      '<button class="' + (tab === 'cloud' ? 'on' : '') + '" onclick="KBOOT.tab(\'cloud\')">☁️ ' + T('النسخ السحابي', 'Cloud') + '</button>' +
-      '<button class="' + (tab === 'lic' ? 'on' : '') + '" onclick="KBOOT.tab(\'lic\')">🔑 ' + T('الترخيص', 'Licence') + '</button>' +
-      '<button class="' + (tab === 'mig' ? 'on' : '') + '" onclick="KBOOT.tab(\'mig\')">🚀 ' + T('الترحيل', 'Migration') + '</button>' +
+  /* ---------- fenêtre ---------- */
+  function openPanel() {
+    build();
+    var bg = $('kb-modal');
+    if (bg) { bg.style.display = 'flex'; prefill(); }
+  }
+  function closePanel() {
+    var bg = $('kb-modal');
+    if (bg) bg.style.display = 'none';
+  }
+
+  function prefill() {
+    var s = store();
+    var c = (s && s.cfg) ? s.cfg() : {};
+    if ($('kb-url') && !$('kb-url').value && c.url) $('kb-url').value = c.url;
+    if ($('kb-anon') && !$('kb-anon').value && c.anon) $('kb-anon').value = c.anon;
+    if ($('kb-email') && !$('kb-email').value && c.email) $('kb-email').value = c.email;
+    paintBadge();
+  }
+
+  function build() {
+    if (built && $('kb-modal')) return;
+    built = true;
+    addCss();
+    addI18n();
+    var bg = document.createElement('div');
+    bg.id = 'kb-modal';
+    bg.className = 'kb-bg';
+    bg.style.display = 'none';
+    bg.innerHTML =
+      '<div class="kb-card" role="dialog" aria-modal="true">' +
+      '  <div class="kb-head"><h3>☁️ ' + t('ربط السحابة') + '</h3>' +
+      '    <button class="kb-x" id="kb-close" type="button" aria-label="' + t('إغلاق') + '">✕</button></div>' +
+      '  <div class="kb-body">' +
+      '    <div class="kb-hint">' + t('يُدخل مرة واحدة فقط ثم يُحفظ تلقائيا') + '</div>' +
+      '    <div class="kb-f"><label for="kb-url">' + t('عنوان المشروع') + ' (https://xxx.supabase.co)</label>' +
+      '      <input id="kb-url" type="text" dir="ltr" autocomplete="off" spellcheck="false" placeholder="https://xxxxx.supabase.co"></div>' +
+      '    <div class="kb-f"><label for="kb-anon">' + t('المفتاح العام') + ' (anon)</label>' +
+      '      <input id="kb-anon" type="password" dir="ltr" autocomplete="off" spellcheck="false" placeholder="eyJhbGciOi..."></div>' +
+      '    <div class="kb-f"><label for="kb-email">' + t('البريد الإلكتروني') + '</label>' +
+      '      <input id="kb-email" type="email" dir="ltr" autocomplete="username" spellcheck="false"></div>' +
+      '    <div class="kb-f"><label for="kb-pass">' + t('كلمة المرور') + '</label>' +
+      '      <input id="kb-pass" type="password" dir="ltr" autocomplete="current-password"></div>' +
+      '    <label class="kb-chk"><input id="kb-signup" type="checkbox"> ' + t('إنشاء حساب جديد') + '</label>' +
+      '    <div class="kb-row">' +
+      '      <button class="kb-btn ok" id="kb-connect" type="button">اتصال</button>' +
+      '      <button class="kb-btn" id="kb-save" type="button">' + t('حفظ الإعدادات') + '</button>' +
+      '      <button class="kb-btn" id="kb-test" type="button">' + t('اختبار الاتصال') + '</button>' +
+      '      <button class="kb-btn pri" id="kb-sync" type="button">' + t('مزامنة الآن') + '</button>' +
+      '      <button class="kb-btn dan" id="kb-disconnect" type="button">فصل</button>' +
+      '    </div>' +
+      '    <div class="kb-st" id="kb-status"></div>' +
+      '  </div>' +
       '</div>';
+    document.body.appendChild(bg);
+    bg.addEventListener('click', function (e) { if (e.target === bg) closePanel(); });
+    $('kb-close').addEventListener('click', closePanel);
+    $('kb-connect').addEventListener('click', onConnect);
+    $('kb-save').addEventListener('click', onSaveOnly);
+    $('kb-test').addEventListener('click', onTest);
+    $('kb-sync').addEventListener('click', function () { doSync(false); });
+    $('kb-disconnect').addEventListener('click', onDisconnect);
+    ['kb-url', 'kb-anon', 'kb-email'].forEach(function (id) {
+      var e = $(id); if (e) e.addEventListener('change', persistCfg);
+    });
   }
 
-  function licBlock() {
-    var st = (window.KLicense ? KLicense.state() : {});
-    var line = st.key
-      ? '<span class="kc-badge kc-b-ok">' + T('مفعّل', 'Activée') + '</span> ' + (st.kind === 'k2' ? 'K2' : T('صيغة قديمة', 'ancien format'))
-      : '<span class="kc-badge kc-b-off">' + T('غير مفعّل', 'Non activée') + '</span>';
-    return '<div class="kc-step"><b>' + T('حالة الترخيص', 'État de la licence') + ' :</b> ' + line +
-      '<br>' + T('رقم الجهاز', 'Identifiant appareil') + ' : <code>' + (window.KLicense ? KLicense.deviceId() : '-') + '</code>' +
-      (st.serial ? '<br>' + T('الرقم التسلسلي', 'Numéro de série') + ' : <code>' + st.serial + '</code>' : '') +
-      '<br><span style="color:#7c6f77">' + T('دفعة واحدة — نفس المفتاح يشتغل على Windows و الهاتف و السحابة.', 'Un seul paiement — la même clé couvre Windows, mobile et cloud.') + '</span></div>';
-  }
+  /* ---------- boutons de la barre supérieure ---------- */
+  function mount() {
+    addCss();
+    addI18n();
+    var bar = document.querySelector('.topactions') || document.querySelector('.topbar');
+    if (!bar) return;
 
-  function renderCloud() {
-    var c = $('kcCard'); if (!c) return;
-    var S = window.KStore ? KStore.state : { mode: 'local', online: false };
-    var cfg = window.KStore ? KStore.cfg() : {};
-    var badge = S.mode === 'local'
-      ? '<span class="kc-badge kc-b-wait">' + T('محلي فقط', 'Local uniquement') + '</span>'
-      : (S.online ? '<span class="kc-badge kc-b-ok">' + T('متصل و متزامن', 'Connecté & synchronisé') + '</span>'
-                  : '<span class="kc-badge kc-b-off">' + T('غير متصل', 'Hors ligne') + '</span>');
-
-    var head = '<button class="kc-close" onclick="KBOOT.close()">✕</button>' +
-      '<h3>☁️ ' + T('النسخ السحابي و المزامنة', 'Cloud & synchronisation') + '</h3>' +
-      '<div class="kc-sub">' + T(
-        'حسابك أنت : GitHub + Supabase. لا يمر أي شيء عبرنا. مجاني في الاستعمال العادي.',
-        'Votre propre compte : GitHub + Supabase. Rien ne passe par nous. Gratuit en usage normal.') +
-      '<br>' + badge + ' &nbsp; <small style="color:#7c6f77">' + (S.lastSync ? T('آخر مزامنة', 'Dernière synchro') + ' : ' + S.lastSync : '') + '</small></div>';
-
-    var body = tabs();
-
-    if (tab === 'cloud') {
-      body += licBlock();
-      body += '<div class="kc-row"><div><label>Supabase URL</label><input id="kcUrl" placeholder="https://xxxxx.supabase.co" value="' + (cfg.url || '') + '"></div></div>' +
-        '<div class="kc-row"><div><label>anon public key</label><input id="kcAnon" placeholder="eyJhbGciOi..." value="' + (cfg.anon || '') + '"></div></div>' +
-        '<div class="kc-row"><div><label>' + T('البريد', 'E-mail') + '</label><input id="kcEmail" type="email" value="' + (cfg.email || '') + '"></div>' +
-        '<div><label>' + T('كلمة السر', 'Mot de passe') + '</label><input id="kcPass" type="password" placeholder="••••••"></div></div>' +
-        '<div class="kc-row">' +
-        '<button class="kc-btn" onclick="KBOOT.test()">🔍 ' + T('اختبار', 'Tester') + '</button>' +
-        '<button class="kc-btn p" onclick="KBOOT.login(false)">🔓 ' + T('اتصال', 'Se connecter') + '</button>' +
-        '<button class="kc-btn" onclick="KBOOT.login(true)">＋ ' + T('حساب جديد', 'Créer un compte') + '</button>' +
-        '</div>' +
-        '<div class="kc-row">' +
-        '<button class="kc-btn g" onclick="KBOOT.sync()">🔄 ' + T('مزامنة الآن', 'Synchroniser') + '</button>' +
-        '<button class="kc-btn d" onclick="KBOOT.logout()">🚪 ' + T('فصل', 'Déconnecter') + '</button>' +
-        '</div>' +
-        '<div class="kc-step">' + T(
-          '① أنشئ مشروعا مجانيا في supabase.com ② SQL Editor — نفّذ ملف schema.sql ③ الصق هنا الرابط و المفتاح anon ④ أنشئ حسابا ⑤ اضغط « ترحيل ».',
-          '① Créez un projet gratuit sur supabase.com ② SQL Editor — exécutez schema.sql ③ Collez ici l\'URL et la clé anon ④ Créez un compte ⑤ Cliquez « Migrer ».') + '</div>' +
-        '<div id="kcOut" class="kc-out" style="display:none"></div>';
-    }
-
-    if (tab === 'lic') {
-      body += '<div class="kc-step">' + T(
-        'أدخل مفتاحك. الصيغة القديمة (كلمات) ما زالت مقبولة كما هي — لا حاجة لإعادة التفعيل.',
-        'Saisissez votre clé. L\'ancien format (mots) reste accepté tel quel — aucune réactivation nécessaire.') + '</div>' +
-        '<div class="kc-row"><div><label>' + T('الرقم التسلسلي (لصيغة قديمة)', 'Numéro de série (ancien format)') + '</label><input id="kcSerial" value="' + ((KLicense.state().serial) || '') + '"></div></div>' +
-        '<div class="kc-row"><div><label>' + T('المفتاح', 'Clé') + '</label><input id="kcKey" value="' + ((KLicense.state().key) || '') + '" placeholder="K2-… ' + T('أو الكلمات', 'ou mots') + '"></div></div>' +
-        '<div class="kc-row"><button class="kc-btn p" onclick="KBOOT.activate()">✅ ' + T('تفعيل', 'Activer') + '</button>' +
-        '<button class="kc-btn" onclick="KBOOT.copyDev()">📋 ' + T('نسخ رقم الجهاز', 'Copier l\'identifiant') + '</button></div>' +
-        licBlock() +
-        '<div id="kcOut" class="kc-out" style="display:none"></div>';
-    }
-
-    if (tab === 'mig') {
-      var counts = (typeof DB === 'object' && DB) ? ['articles', 'clients', 'locs', 'lines', 'depense', 'caisse_ctrl', 'users']
-        .map(function (k) { return k + ' : ' + ((DB[k] || []).length); }).join(' · ') : '';
-      body += '<div class="kc-step"><b>' + T('ما يوجد محليا', 'Contenu local') + ' :</b><br>' + (counts || '—') +
-        '<br><b>' + T('الحجم', 'Taille') + ' :</b> ' + Math.round(JSON.stringify((typeof DB === 'object' && DB) ? DB : {}).length / 1024) + ' Ko</div>' +
-        '<div class="kc-sub">' + T(
-          'الترحيل ينسخ بياناتك إلى سحابتك ثم يفعّل المزامنة. لا يُحذف أي شيء محليا.',
-          'La migration copie vos données vers votre cloud puis active la synchronisation. Rien n\'est supprimé en local.') + '</div>' +
-        '<div class="kc-row"><button class="kc-btn g" onclick="KBOOT.migrate()">🚀 ' + T('ترحيل بياناتي إلى السحابة', 'Migrer mes données vers le cloud') + '</button></div>' +
-        '<div class="kc-row"><button class="kc-btn" onclick="KBOOT.exportJson()">⬇️ ' + T('تصدير نسخة JSON', 'Exporter un JSON') + '</button>' +
-        '<button class="kc-btn" onclick="KBOOT.pushAssets()">🖼️ ' + T('رفع الصور', 'Envoyer les images') + '</button></div>' +
-        '<div id="kcOut" class="kc-out" style="display:none"></div>';
-    }
-
-    c.innerHTML = head + body;
-  }
-  function out(msg, keep) {
-    var o = $('kcOut'); if (!o) return;
-    o.style.display = 'block';
-    o.textContent = keep ? (o.textContent + '\n' + msg) : msg;
-    o.scrollTop = o.scrollHeight;
-  }
-
-  var KBOOT = {
-    close: closeCloud,
-    tab: function (t) { tab = t; renderCloud(); },
-
-    test: function () {
-      if (!window.KStore) return out('KStore absent');
-      KStore.saveCfg({ url: KStore.normalizeUrl($('kcUrl').value), anon: $('kcAnon').value.trim() });
-      out(T('جار الاختبار…', 'Test en cours…'));
-      KStore.health().then(function (r) {
-        if (r.ok) out('✅ ' + T('الاتصال ناجح. الوثيقة موجودة', 'Connexion OK. Document') + ' : ' + (r.exists ? 'rev ' + r.rev : T('جديدة', 'nouveau')));
-        else if (r.schema) out('⚠️ ' + T('الاتصال ناجح لكن الجدول غير موجود — نفّذ schema.sql', 'Connexion OK mais table absente — exécutez schema.sql'));
-        else out('❌ ' + (r.error || '?'));
+    if (!document.getElementById('btnLang')) {
+      var lb = document.createElement('button');
+      lb.className = 'icobtn';
+      lb.id = 'btnLang';
+      lb.type = 'button';
+      lb.style.cssText = 'background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;font-weight:800;font-size:12px;min-width:38px';
+      lb.title = 'اللغة / Langue';
+      lb.textContent = curLang() === 'fr' ? 'ع' : 'FR';
+      lb.addEventListener('click', function () {
+        var next = curLang() === 'fr' ? 'ar' : 'fr';
+        try { window.dispatchEvent(new CustomEvent('karaya:langchange-request', { detail: next })); } catch (e) { }
+        if (window.I18N && window.I18N.set) { try { window.I18N.set(next); } catch (e) { } }
+        lb.textContent = next === 'fr' ? 'ع' : 'FR';
+        paintBadge();
       });
-    },
+      bar.appendChild(lb);
+    }
 
-    login: function (signUp) {
-      var o = { url: $('kcUrl').value, anon: $('kcAnon').value.trim(), email: $('kcEmail').value.trim(), password: $('kcPass').value, signUp: !!signUp };
-      if (!o.url || !o.anon) return out(T('أدخل URL و anon key', 'Renseignez l\'URL et la clé anon'));
-      if (!o.email || !o.password) return out(T('أدخل البريد و كلمة السر', 'Renseignez e-mail et mot de passe'));
-      out(T('جار الاتصال…', 'Connexion…'));
-      KStore.connect(o).then(function (r) {
-        out('✅ ' + T('متصل', 'Connecté') + ' : ' + r.email);
-        renderCloud();
-      }).catch(function (e) { out('❌ ' + (e.message || e)); });
-    },
+    if (!document.getElementById('btnCloud')) {
+      var cb = document.createElement('button');
+      cb.className = 'icobtn kb-off';
+      cb.id = 'btnCloud';
+      cb.type = 'button';
+      cb.title = 'السحابة — Cloud';
+      cb.textContent = '☁️';
+      cb.addEventListener('click', openPanel);
+      bar.appendChild(cb);
+    }
+    build();
+    prefill();
+    paintBadge();
+  }
 
-    sync: function () {
-      out(T('جار المزامنة…', 'Synchronisation…'));
-      if (window.KStore) KStore.push((typeof DB === 'object') ? DB : {});
-      var p = (window.KStore && KStore.flush) ? KStore.flush() : Promise.resolve(false);
-      Promise.resolve(p).then(function () { return KStore.pull(); }).then(function (r) {
-        out(r ? ('✅ rev ' + r.rev + ' · ' + (r.at || '')) : '⚠️ ' + T('لا شيء في السحابة بعد', 'Rien encore dans le cloud'));
-      }).catch(function (e) { out('❌ ' + (e.message || e)); });
-    },
+  function curLang() {
+    try { return (window.I18N && window.I18N.lang) || 'ar'; } catch (e) { return 'ar'; }
+  }
 
-    logout: function () { if (window.KStore) KStore.disconnect(); renderCloud(); },
+  function paintBadge() {
+    var b = document.getElementById('btnCloud');
+    if (!b) return;
+    var s = store();
+    var st = (s && s.state) ? s.state : null;
+    var on = !!(st && st.online);
+    b.classList.toggle('kb-on', on);
+    b.classList.toggle('kb-off', !on);
+    var txt = on ? t('متصلة') : t('محلية');
+    if (on && lastSyncAt) txt += ' ' + lastSyncAt;
+    b.title = t('السحابة') + ' — ' + txt;
+  }
 
-    activate: function () {
-      var serial = $('kcSerial') ? $('kcSerial').value.trim() : '';
-      var key = $('kcKey') ? $('kcKey').value.trim() : '';
-      out(T('جار التحقق…', 'Vérification…'));
-      KLicense.check({ key: key, serial: serial }).then(function (r) {
-        if (r.ok) {
-          out('✅ ' + T('تم التفعيل', 'Activée') + ' — ' + (r.kind === 'k2' ? 'K2' : T('صيغة قديمة', 'ancien format')) +
-            ' · ' + T('الإصدارات', 'éditions') + ' : ' + r.editions);
-          renderCloud();
-        } else {
-          var why = { empty: T('أدخل مفتاحا', 'Saisissez une clé'), invalid: T('مفتاح غير صحيح', 'Clé invalide'),
-            signature: T('توقيع غير صالح', 'Signature invalide'), expired: T('منتهي الصلاحية', 'Expirée'),
-            serial: T('الرقم التسلسلي لا يطابق', 'Numéro de série différent'), format: T('صيغة غير معروفة', 'Format inconnu') }[r.reason] || r.reason;
-          out('❌ ' + why);
+  /* ---------- démarrage ---------- */
+  function startAuto() {
+    if (autoTimer) clearInterval(autoTimer);
+    autoTimer = setInterval(function () {
+      var s = store();
+      if (!s || !s.isConfigured()) return;
+      if (!s.state || !s.state.online) return;
+      if (document.hidden) return;
+      doSync(true);
+    }, 90000);
+  }
+
+  function boot() {
+    try { mount(); } catch (e) { }
+    var c = cloudApi();
+    if (!c) return;
+    /* 1) récupérer la config mémorisée côté Python (survit à une
+          réinstallation / à un localStorage vidé) puis restaurer la session */
+    try {
+      c.refresh().then(function (r) {
+        prefill();
+        paintBadge();
+        var s = store();
+        if (s && s.state && s.state.online) doSync(true);
+        else if (r && r.configured) setStatus(t('محلية'), 'warn');
+      }).catch(function () { });
+    } catch (e) { }
+    startAuto();
+  }
+
+  /* enregistrement des données distantes (realtime) */
+  function wire() {
+    var s = store();
+    if (!s || !s.onRemote) return;
+    try {
+      s.onRemote(function (payload) {
+        if (!payload) return;
+        if (setDB(payload)) {
+          lastSyncAt = new Date().toLocaleTimeString();
+          setStatus(t('تم التحديث من السحابة'), 'ok');
+          paintBadge();
         }
       });
-    },
-
-    copyDev: function () {
-      var v = KLicense.deviceId();
-      (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(function () { out('📋 ' + v); })
-        .catch(function () { out('📋 ' + v); });
-    },
-
-    migrate: function () {
-      if (!window.KStore || KStore.state.mode === 'local') return out('⚠️ ' + T('اتصل أولا', 'Connectez-vous d\'abord'));
-      var db = (typeof DB === 'object') ? DB : null;
-      if (!db) return out('❌ ' + T('لا توجد بيانات', 'Aucune donnée'));
-      out(T('① رفع البيانات…', '① Envoi des données…'));
-      KStore.push(db);
-      KStore.flush().then(function (ok) {
-        if (!ok) { out('❌ ' + T('فشل الرفع', 'Échec de l\'envoi')); return; }
-        out(T('② التحقق من السحابة…', '② Vérification…'));
-        return KStore.pull().then(function (r) {
-          if (!r) { out('⚠️ ' + T('لم يتم العثور على الوثيقة', 'Document introuvable')); return; }
-          var n = (r.db && r.db.articles) ? r.db.articles.length : 0;
-          out('✅ ' + T('تم الترحيل. عدد المنتوجات في السحابة', 'Migration OK. Articles dans le cloud') + ' : ' + n);
-          out('✅ ' + T('المزامنة في الوقت الحقيقي مفعّلة الآن بين هذا الجهاز و باقي أجهزتك.', 'Synchronisation temps réel active entre cet appareil et vos autres appareils.'));
-          if (typeof toast === 'function') toast(T('✅ تم الترحيل إلى السحابة', '✅ Migration cloud réussie'), 'ok');
-        });
-      }).catch(function (e) { out('❌ ' + (e.message || e)); });
-    },
-
-    exportJson: function () {
-      try {
-        var txt = JSON.stringify((typeof DB === 'object') ? DB : {}, null, 1);
-        var a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([txt], { type: 'application/json' }));
-        a.download = 'karaya_export_' + new Date().toISOString().slice(0, 10) + '.json';
-        a.click();
-        out('✅ ' + T('تم التصدير', 'Export généré'));
-      } catch (e) { out('❌ ' + e); }
-    },
-
-    pushAssets: function () {
-      if (!window.KStore || KStore.state.mode === 'local') return out('⚠️ ' + T('اتصل أولا', 'Connectez-vous d\'abord'));
-      if (!DB || !Array.isArray(DB.articles)) return out('❌ ' + T('لا توجد منتوجات', 'Aucun article'));
-      var items = DB.articles.filter(function (a) { return a && typeof a.img === 'string' && a.img.indexOf('data:image') === 0; });
-      if (!items.length) return out('ℹ️ ' + T('لا توجد صور مدمجة', 'Aucune image intégrée'));
-      out(T('جار رفع', 'Envoi de') + ' ' + items.length + ' ' + T('صورة…', 'image(s)…'));
-      var i = 0, ok = 0;
-      (function next() {
-        if (i >= items.length) { out('✅ ' + ok + '/' + items.length + ' ' + T('صورة', 'images')); if (typeof save === 'function') save(); return; }
-        var a = items[i++];
-        fetch(a.img).then(function (r) { return r.blob(); }).then(function (b) {
-          return KStore.uploadAsset('art_' + (a.id || a.num || i) + '.jpg', b);
-        }).then(function (url) { a.img = url; ok++; })
-          .catch(function () { }).then(next);
-      })();
-    }
-  };
-  window.KBOOT = KBOOT;
-
-  /* ---------------- 5. Synchronisation entrante ---------------- */
-  var applying = false;
-  function applyRemote(db, meta) {
-    if (!db || !db.articles) return;
-    if (applying) return;
-    applying = true;
+    } catch (e) { }
     try {
-      /* fusion non destructive : on remplace, le cloud est la référence */
-      if (typeof DB === 'object') {
-        Object.keys(db).forEach(function (k) { DB[k] = db[k]; });
-        if (typeof normalizeDB === 'function') normalizeDB();
-        try { localStorage.setItem('karaya_db_v2', JSON.stringify(DB)); } catch (e) { }
-        if (typeof renderStoreBadge === 'function') { try { renderStoreBadge(); } catch (e) { } }
-        var cur = document.querySelector('.screen.active');
-        if (cur) { var n = cur.id.replace('s-', ''); if (n) { try { go(n); } catch (e) { } } }
-        if (typeof toast === 'function') toast(T('☁️ تم التحديث من السحابة', '☁️ Mis à jour depuis le cloud'), 'ok');
-      }
-    } finally { applying = false; }
+      if (s.bindDB) s.bindDB(getDB);
+    } catch (e) { }
   }
 
-  /* ---------------- 6. Démarrage ---------------- */
-  function boot() {
-    style();
-    if (window.I18N) I18N.apply(document.body);
-    langButton();
-    cloudButton();
+  window.KarayaBoot = {
+    version: VERSION,
+    build: mount,
+    open: openPanel,
+    close: closePanel,
+    sync: function () { return doSync(false); },
+    status: function () { var s = store(); return s ? s.statusText() : ''; }
+  };
 
-    if (window.KStore) {
-      KStore.onRemote(applyRemote);
-      KStore.onStatus(function (S) {
-        var b = $('btnCloud');
-        if (b) b.style.opacity = (S.mode === 'local') ? '0.65' : '1';
-      });
-      /* relais de chaque save() vers le cloud (si connecté) */
-      if (typeof window.save === 'function' && !window.__kSavePatched) {
-        window.__kSavePatched = true;
-        var base = window.save;
-        window.save = function () {
-          var r = base.apply(this, arguments);
-          try { if (KStore.state.mode !== 'local') KStore.push(DB); } catch (e) { }
-          return r;
-        };
-      }
-      setTimeout(function () {
-        KStore.initDB().then(function () {
-          if (KStore.state.mode !== 'local') {
-            KStore.pull().then(function (r) { if (r && r.db) applyRemote(r.db, r); });
-          }
-        });
-      }, 1200);
-    }
-
-    /* rappel de licence si l'application tourne hors Windows (mobile/cloud) */
-    setTimeout(function () {
-      if (window.KLicense && !KLicense.state().key) {
-        var py = (window.pywebview && window.pywebview.api);
-        if (!py) { tab = 'lic'; openCloud(); }
-      }
-    }, 2600);
+  function ready() {
+    addI18n();
+    try { mount(); } catch (e) { }
+    try { wire(); } catch (e) { }
   }
 
-  /* re-rendu de la langue : les fenêtres ouvertes suivent */
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready);
+  else ready();
+  window.addEventListener('pywebviewready', function () { ready(); boot(); });
+  window.addEventListener('karaya:cloud-connected', function () { prefill(); paintBadge(); doSync(true); });
   window.addEventListener('karaya:lang', function () {
-    var b = $('btnLang');
-    if (b) b.textContent = (I18N.lang === 'fr') ? 'FR' : 'ع';
-    if ($('kcloudOverlay') && !$('kcloudOverlay').classList.contains('hidden')) renderCloud();
+    var lb = document.getElementById('btnLang');
+    if (lb) lb.textContent = curLang() === 'fr' ? 'ع' : 'FR';
+    paintBadge();
   });
+  setTimeout(boot, 1200);
+  setTimeout(ready, 2500);
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) { paintBadge(); }
+  });
 })();
