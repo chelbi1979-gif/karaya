@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.chelbi1979.karaya",
+        "sha256_cert_fingerprints": ["39:D4:37:CA:73:E9:B7:2B:CD:55:F6:4B:6E:4A:8B:66:DA:C8:72:6D:E0:F2:33:30:E1:C8:EF:0A:5B:3C:0B:C4"]
+      }
+    }]
