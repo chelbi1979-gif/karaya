@@ -1,0 +1,25 @@
+﻿{
+  "background_color": "#ffffff",
+  "dir": "ltr",
+  "display": "standalone",
+  "name": "Karaya",
+  "orientation": "any",
+  "scope": "/karaya/",
+  "short_name": "Karaya",
+  "start_url": "/karaya/",
+  "theme_color": "#9d174d",
+  "icons": [
+    {
+      "src": "https://chelbi1979-gif.github.io/karaya/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://chelbi1979-gif.github.io/karaya/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
