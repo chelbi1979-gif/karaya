@@ -4,34 +4,22 @@
   "display": "standalone",
   "name": "Karaya",
   "orientation": "any",
-  "scope": "/",
+  "scope": "/karaya/",
   "short_name": "Karaya",
   "start_url": "/karaya/",
   "theme_color": "#9d174d",
   "icons": [
     {
-      "src": "https://chelbi1979-gif.github.io/karaya/favicon-32.png",
+      "src": "https://chelbi1979-gif.github.io/karaya/icon-192.png",
+      "sizes": "192x192",
       "type": "image/png",
-      "sizes": "32x32",
-      "isSquare": true,
-      "isPng": true,
-      "isWebp": false,
-      "isJpg": false,
-      "width": 32,
-      "is512x512": false,
-      "is256x256": false,
-      "is192x192": false
+      "purpose": "any maskable"
     },
     {
-      "src": "https://chelbi1979-gif.github.io/karaya/apple-touch-icon.png",
-      "isSquare": false,
-      "isPng": true,
-      "isWebp": false,
-      "isJpg": false,
-      "width": 0,
-      "is512x512": false,
-      "is256x256": false,
-      "is192x192": false
+      "src": "https://chelbi1979-gif.github.io/karaya/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
