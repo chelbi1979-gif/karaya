@@ -1,86 +1,37 @@
 {
-  "id": "/",
-  "name": "نظام إدارة الكراء — Karaya",
-  "short_name": "Karaya",
-  "description": "Gestion de location : articles, clients, contrats, réservations, dettes, caisse et statistiques.",
-  "lang": "ar",
-  "dir": "rtl",
-  "start_url": "./index.html",
-  "scope": "./",
+  "background_color": "#ffffff",
+  "dir": "ltr",
   "display": "standalone",
-  "display_override": [
-    "standalone",
-    "minimal-ui",
-    "browser"
-  ],
+  "name": "Karaya",
   "orientation": "any",
-  "background_color": "#f7f4f6",
+  "scope": "/",
+  "short_name": "Karaya",
+  "start_url": "/karaya/",
   "theme_color": "#9d174d",
-  "categories": [
-    "business",
-    "productivity",
-    "finance"
-  ],
-  "prefer_related_applications": false,
   "icons": [
     {
-      "src": "icon-192.png",
-      "sizes": "192x192",
+      "src": "https://chelbi1979-gif.github.io/karaya/favicon-32.png",
       "type": "image/png",
-      "purpose": "any"
+      "sizes": "32x32",
+      "isSquare": true,
+      "isPng": true,
+      "isWebp": false,
+      "isJpg": false,
+      "width": 32,
+      "is512x512": false,
+      "is256x256": false,
+      "is192x192": false
     },
     {
-      "src": "icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "icon-maskable-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "icon-maskable-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "كراء جديد",
-      "short_name": "كراء",
-      "url": "./index.html?go=rental",
-      "icons": [
-        {
-          "src": "icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    },
-    {
-      "name": "المنتوجات",
-      "short_name": "منتوجات",
-      "url": "./index.html?go=products",
-      "icons": [
-        {
-          "src": "icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    },
-    {
-      "name": "الزبائن",
-      "short_name": "زبائن",
-      "url": "./index.html?go=clients",
-      "icons": [
-        {
-          "src": "icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
+      "src": "https://chelbi1979-gif.github.io/karaya/apple-touch-icon.png",
+      "isSquare": false,
+      "isPng": true,
+      "isWebp": false,
+      "isJpg": false,
+      "width": 0,
+      "is512x512": false,
+      "is256x256": false,
+      "is192x192": false
     }
   ]
 }
