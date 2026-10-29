@@ -1,6 +1,6 @@
 /* sw.js — cache hors-ligne de l'application (mode cloud / mobile) */
-const CACHE = 'karaya-v15';
-const ASSETS = ['./index.html', './karaya-i18n.js', './karaya-keys.js', './karaya-license.js', './karaya-store.js', './karaya-boot.js', './karaya-cloud.js', './manifest.webmanifest'];
+const CACHE = 'karaya-v17';
+const ASSETS = ['./', './index.html', './karaya-i18n.js', './karaya-keys.js', './karaya-license.js', './karaya-store.js', './karaya-boot.js', './karaya-cloud.js', './manifest.json', './icon-192.png', './icon-512.png', './favicon-32.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });

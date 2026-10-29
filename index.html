@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#9d174d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Karaya">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <title>نظام إدارة الكراء</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -62,6 +68,44 @@
     width:36px;height:36px;display:grid;place-items:center;font-size:16px;cursor:pointer;
   }
   .icobtn:active{transform:scale(.95)}
+
+  /* ---------- BARRE SUPÉRIEURE : lisible sur mobile (une seule rangée) ---------- */
+  .topactions{flex-wrap:nowrap;align-items:center}
+  #userChip{order:1}
+  #btnLang{order:2}
+  #btnCloud{order:3}
+  #btnRefresh{order:4}
+  #btnMore{order:5}
+  .topmenu{
+    position:absolute;top:calc(100% + 6px);inset-inline-end:12px;z-index:200;min-width:214px;
+    background:#fff;border:1px solid var(--line);border-radius:14px;padding:6px;
+    box-shadow:0 20px 44px -14px rgba(31,23,32,.45);display:none;
+  }
+  .topmenu.show{display:block;animation:fade .14s ease-out}
+  .topmenu .tmi{
+    display:flex;align-items:center;gap:9px;width:100%;background:#fff;border:0;border-radius:10px;
+    padding:11px 12px;font-family:inherit;font-size:13.5px;font-weight:700;color:var(--ink);
+    cursor:pointer;text-align:start;line-height:1.25;
+  }
+  .topmenu .tmi:hover,.topmenu .tmi:active{background:var(--brand-soft);color:var(--brand)}
+  .topmenu .tmi.danger{color:#b91c1c}
+  .topmenu .tmi.danger:hover{background:#fef2f2;color:#b91c1c}
+  .topmenu .sep{height:1px;background:var(--line);margin:5px 6px}
+  @media(max-width:640px){
+    .topbar{padding:8px 10px;gap:6px}
+    .brand{gap:8px}
+    .logo{width:34px;height:34px;font-size:17px;border-radius:10px}
+    .brand .shop{font-size:13px;max-width:38vw}
+    .topactions{gap:5px;flex:0 0 auto;justify-content:flex-end;min-width:0}
+    .icobtn{width:40px;height:40px;font-size:18px;flex:0 0 auto}
+    #userChip .badge{font-size:10px;padding:3px 6px;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block}
+    .topmenu{inset-inline:8px;min-width:0}
+  }
+  @media(max-width:400px){
+    #userChip{display:none}
+    .brand .shop{max-width:46vw;font-size:12.5px}
+    .icobtn{width:38px;height:38px;font-size:17px}
+  }
 
   /* ---------- SCREENS ---------- */
   .screen{display:none;padding:14px}
@@ -524,7 +568,7 @@
 <script src="karaya-license.js"></script>
 <script src="karaya-i18n.js"></script>
 <script src="karaya-cloud.js"></script>
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" href="manifest.json">
 </head>
 <body>
 <script>try{document.body.classList.add('app-booting');}catch(e){}
@@ -593,13 +637,18 @@ try{var _lt=localStorage.getItem('karaya_nav_layout_v1')||'classic';if(['classic
     </div>
     <div class="topactions">
       <div class="chipwrap" id="userChip"></div>
-      <button class="icobtn" id="btnAdmin" onclick="renderAdminGo('stats')" title="لوحة المدير" style="background:#fdf2f8;color:#9d174d;border-color:#f9a8d4">📊</button>
-      <button class="icobtn" onclick="openActivation()" title="رمز الدخول" style="background:#fffbeb;color:#b45309;border-color:#fde68a">🔑</button>
-      <button class="icobtn" onclick="refreshData()" title="تحديث البيانات (Actualiser)" style="background:#ecfdf5;color:#047857;border-color:#a7f3d0">🔄</button>
-      <button class="icobtn" onclick="cycleNavLayout()" title="توزيع الأزرار في الواجهة">🎛️</button>
-      <button class="icobtn" onclick="go('import')" title="استيراد / تصدير">⇅</button>
-      <button class="icobtn" onclick="go('info')" title="الإعدادات">⚙️</button>
-      <button class="icobtn" onclick="logout()" title="تسجيل الخروج — قفل التطبيق" style="background:#b91c1c;color:#fff;border-color:transparent" aria-label="تسجيل الخروج">🚪</button>
+      <button class="icobtn" id="btnRefresh" type="button" onclick="refreshData()" title="تحديث البيانات" aria-label="تحديث" style="background:#ecfdf5;color:#047857;border-color:#a7f3d0">🔄</button>
+      <button class="icobtn" id="btnMore" type="button" onclick="toggleTopMenu(event)" title="المزيد" aria-label="القائمة" aria-haspopup="true" aria-expanded="false">⋮</button>
+      <div class="topmenu" id="topMenu" role="menu" aria-label="المزيد">
+        <button class="tmi" id="btnAdmin" type="button" role="menuitem" onclick="renderAdminGo('stats');closeTopMenu()"><span>📊</span><span>لوحة المدير</span></button>
+        <button class="tmi" type="button" role="menuitem" onclick="openActivation();closeTopMenu()"><span>🔑</span><span>رمز الدخول</span></button>
+        <div class="sep"></div>
+        <button class="tmi" type="button" role="menuitem" onclick="go('import');closeTopMenu()"><span>⇅</span><span>استيراد / تصدير</span></button>
+        <button class="tmi" type="button" role="menuitem" onclick="go('info');closeTopMenu()"><span>⚙️</span><span>الإعدادات</span></button>
+        <button class="tmi" type="button" role="menuitem" onclick="cycleNavLayout();closeTopMenu()"><span>🎛️</span><span>توزيع الأزرار</span></button>
+        <div class="sep"></div>
+        <button class="tmi danger" type="button" role="menuitem" onclick="logout()"><span>🚪</span><span>تسجيل الخروج</span></button>
+      </div>
     </div>
   </header>
 
@@ -1409,6 +1458,73 @@ const DEFAULT_PWD = '123456';
 
 function isAdmin() { return !!(activeUser && activeUser.role === 'admin'); }
 
+/* ==================================================================
+   VERROU D'AJOUT — licence / essai (Web + Mobile / PWA uniquement)
+   ------------------------------------------------------------------
+   • Desktop (pont Python / file://) : JAMAIS bloqué — le verrou matériel
+     reste géré par l'application bureau (db_bridge).
+   • Web / Mobile : l'essai autorise 10 enregistrements (contrats). Tant
+     qu'il en reste, tout est ouvert. Une fois épuisé ET sans licence
+     valide, l'OUVERTURE des formulaires d'ajout est refusée :
+         كراء جديد  •  منتوج جديد  •  زبون جديد
+     La consultation, la modification et l'impression restent libres.
+   • Le formulaire de licence ne s'ouvre PLUS au démarrage : il s'ouvre
+     seulement quand le client tente un ajout bloqué (ou via رمز الدخول).
+   ================================================================== */
+function addLocked() {
+  try {
+    /* --- Application bureau : décision = Python (db_bridge), jamais JS --- */
+    if (isDeskApp()) return !!(_deskLic.ready && _deskLic.blocked && !_deskLic.activated);
+    if (!window.KLicense) return false;
+    if (typeof isWebLic === 'function' && !isWebLic()) return false;
+    var st = KLicense.state() || {};
+    if (st.verified) return false;
+    var t = (KLicense.trial ? KLicense.trial() : null) || { exhausted: false };
+    return !!t.exhausted;
+  } catch (e) { return false; }
+}
+function requireAddPerm(kind) {
+  if (!addLocked()) return true;
+  var MAX = (window.KLicense && KLicense.TRIAL_MAX) || 10;
+  var M = {
+    product: '⛔ لا يمكن إضافة منتوج جديد — انتهت التجربة (' + MAX + '/' + MAX + '). التفعيل مطلوب',
+    client:  '⛔ لا يمكن إضافة زبون جديد — انتهت التجربة (' + MAX + '/' + MAX + '). التفعيل مطلوب',
+    rental:  '⛔ لا يمكن إنشاء كراء جديد — انتهت التجربة (' + MAX + '/' + MAX + '). التفعيل مطلوب'
+  };
+  var msg = M[kind] || M.rental;
+  try { toast(msg, 'err'); } catch (e) { }
+  setTimeout(function () {
+    try {
+      showActivation();
+      setTimeout(function () { try { showActError(msg); paintTrialLine(); } catch (e) { } }, 170);
+    } catch (e) { }
+  }, 40);
+  return false;
+}
+
+/* ---------- menu ≮ de la barre supérieure ---------- */
+function toggleTopMenu(ev) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  var m = $('topMenu'), b = $('btnMore');
+  if (!m) return;
+  var on = m.classList.toggle('show');
+  if (b) b.setAttribute('aria-expanded', on ? 'true' : 'false');
+}
+function closeTopMenu() {
+  var m = $('topMenu'), b = $('btnMore');
+  if (!m) return;
+  m.classList.remove('show');
+  if (b) b.setAttribute('aria-expanded', 'false');
+}
+document.addEventListener('click', function (e) {
+  var m = $('topMenu');
+  if (!m || !m.classList.contains('show')) return;
+  if (m.contains(e.target)) return;
+  if (e.target && e.target.closest && e.target.closest('#btnMore')) return;
+  closeTopMenu();
+});
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeTopMenu(); });
+
 /* النماذج المقيّدة بالصلاحيات */
 function can(screen) {
   if (!screen) return false;
@@ -1507,6 +1623,12 @@ function bootApp() {
     : '';
   try { applyNavLayout(navLayout()); } catch (e) { }
   try { go('home'); } catch (e) { renderHome(); }
+  /* essai épuisé : simple message, aucun formulaire imposé */
+  try {
+    if (addLocked()) setTimeout(function () {
+      toast('⛔ انتهت التجربة — الإضافة مقفلة. التفعيل : من ≮ → رمز الدخول', 'err');
+    }, 1200);
+  } catch (e) { }
   renderStoreBadge();
 }
 function logout() {
@@ -1768,11 +1890,9 @@ function renderHome() {
     if (t.k === 'offers') { const n = DB.articles.filter(a => a.offre === true).length; cnt = n ? `<span class="cnt">${n}</span>` : ''; }
     return `<div class="tile ${t.c}" onclick="tileAction('${t.k}')">${cnt}<span class="ico">${t.i}</span><span class="lbl">${t.l}</span></div>`;
   }).join('');
-  const extra = [];
-  if (isAdmin()) extra.push(`<div class="tile rose" onclick="renderAdminGo('stats')"><span class="ico">📊</span><span class="lbl">لوحة المدير</span></div>`);
-  if (can('import')) extra.push(`<div class="tile ghost" onclick="go('import')"><span class="ico">⇅</span><span class="lbl">استيراد البيانات</span></div>`);
-  if (can('info')) extra.push(`<div class="tile ghost" onclick="go('info')"><span class="ico">⚙️</span><span class="lbl">الإعدادات</span></div>`);
-  $('homeTiles').innerHTML = tiles + extra.join('');
+  /* أزرار مزدوجة محذوفة : لوحة المدير / الإعدادات / استيراد —
+     الآن مرة واحدة فقط في : ≮ القائمة العليا */
+  $('homeTiles').innerHTML = tiles;
 }
 
 function renderAdminGo(tab) { admTab = tab || 'stats'; go('admin'); }
@@ -2065,6 +2185,7 @@ function showProduct(id) {
 }
 
 function openArticle(id) {
+  if (!id && !requireAddPerm('product')) return;
   const a = id ? artById(id) : null;
   $('artModalTitle').textContent = a ? 'تعديل المنتوج' : 'منتوج جديد';
   $('a_id').value = a ? a.id : '';
@@ -2100,6 +2221,7 @@ function pickImage(e) {
   r.readAsDataURL(f);
 }
 function saveArticle() {
+  if (!(($('a_id') && $('a_id').value) || '') && !requireAddPerm('product')) return;
   const nom = $('a_name').value.trim(), ref = $('a_ref').value.trim();
   if (!nom) { toast('اسم المنتوج إلزامي', 'err'); return; }
   const id = $('a_id').value;
@@ -2237,6 +2359,7 @@ function renderClients() {
 }
 
 function openClient(id) {
+  if (!id && !requireAddPerm('client')) return;
   const c = id ? cliById(id) : null;
   $('cliModalTitle').textContent = c ? 'تعديل الزبون' : 'زبون جديد';
   $('c_id').value = c ? c.id : '';
@@ -2248,6 +2371,7 @@ function openClient(id) {
   openModal('m-client');
 }
 function saveClient() {
+  if (!(($('c_id') && $('c_id').value) || '') && !requireAddPerm('client')) return;
   const nom = $('c_name').value.trim();
   if (!nom) { toast('اسم الزبون إلزامي', 'err'); return; }
   const id = $('c_id').value;
@@ -2326,6 +2450,7 @@ function priceFor(a, per) {
 }
 
 function newRental(artId, cliId) {
+  if (!requireAddPerm('rental')) return;
   /* التواريخ تفتح فارغة ، و المدة تُحسب تلقائيا عند إدخال التاريخين */
   currentLoc = { id: '', num: nextLocNum(), clientId: cliId || '', datop: todayISO(), datloc: '', datret: '', periode: '', total: 0, paid: 0, payDate: '', payNote: '', mode: 'loc', notes: '' };
   modeAuto = true;
@@ -2715,6 +2840,8 @@ function _rentalSaveCore() {
     try { KLicense.noteSaveDone(_trialGrant); } catch (e) { }
   }
   _trialGrant = null;
+  /* le compteur Python vient de changer : on relit l'état de licence */
+  try { if (isDeskApp()) refreshDeskLic(); } catch (e) { }
   toast('تم حفظ الكراء رقم ' + l.num, 'ok');
   openRental(l.id);
 }
@@ -4682,7 +4809,42 @@ let LIC_STATE = { ok: false, activated: false, blocked: false, serial: '', cleli
 function licPlatform() {
   try { return (window.KLicense && KLicense.platform) ? KLicense.platform() : 'desktop'; } catch (e) { return 'desktop'; }
 }
-function isWebLic() { return licPlatform() === 'web' || licPlatform() === 'mobile'; }
+function isWebLic() { if (isDeskApp()) return false; return licPlatform() === 'web' || licPlatform() === 'mobile'; }
+
+/* ==================================================================
+   L'APPLICATION BUREAU TOURNE EN http://127.0.0.1:8731 (lanceur_pro.py),
+   pas en file:// : sans ce test, KLicense.platform() répondait « web »
+   avant l'injection de window.pywebview, et le mode essai de 10
+   enregistrements s'appliquait par erreur aux clients Windows activés.
+   ================================================================== */
+function isDeskApp() {
+  try {
+    if (location.protocol === 'file:') return true;
+    var h = String(location.hostname || '');
+    if (h === '127.0.0.1' || h === 'localhost' || h === '[::1]') return true;
+    if (window.pywebview && window.pywebview.api) return true;
+    if (window.KARAYA_PLATFORM === 'desktop') return true;
+  } catch (e) { }
+  return false;
+}
+
+/* état de licence renvoyé par Python (db_bridge.activation_status) */
+var _deskLic = { ready: false, activated: false, blocked: false, count: 0, limit: 10 };
+async function refreshDeskLic() {
+  try {
+    var api = API();
+    if (!api || !api.activation_status) return _deskLic;
+    var st = await api.activation_status();
+    if (st && st.ok) {
+      LIC_STATE = st;
+      _deskLic = {
+        ready: true, activated: !!st.activated, blocked: !!st.blocked,
+        count: num(st.locs_count), limit: num(st.limit) || 10
+      };
+    }
+  } catch (e) { }
+  return _deskLic;
+}
 
 function setActState(activated) {
   const el = $('actState');
@@ -4714,8 +4876,14 @@ async function applyActivationGate() {
     try {
       const st = await api.activation_status();
       if (st && st.ok) {
+        /* Le formulaire de licence ne s'ouvre PLUS à l'entrée : le client
+           entre et consulte librement. Le blocage (10 enregistrements)
+           s'applique à l'OUVERTURE des formulaires d'ajout. */
         LIC_STATE = st;
-        if (st.blocked) { showActivation(); return false; }
+        _deskLic = {
+          ready: true, activated: !!st.activated, blocked: !!st.blocked,
+          count: num(st.locs_count), limit: num(st.limit) || 10
+        };
         return true;
       }
     } catch (e) { }
@@ -4731,12 +4899,10 @@ async function applyActivationGate() {
       if (!licensed && st.key && KLicense.verifySaved) {
         try { const r = await KLicense.verifySaved(); licensed = !!(r && r.ok); } catch (e) { }
       }
-      if (!licensed) {
-        const t = (KLicense.trial ? KLicense.trial() : null) || { exhausted: false };
-        if (t.exhausted) {
-          setTimeout(() => { try { showActivation(); } catch (e) { } }, 220);
-        }
-      }
+      /* Le formulaire de licence ne s'ouvre PLUS au démarrage : l'entrée
+         reste libre (consultation). C'est l'ouverture d'un formulaire
+         d'AJOUT qui déclenche la demande de licence (requireAddPerm). */
+      void licensed;
     } catch (e) { }
   }
   return true;
