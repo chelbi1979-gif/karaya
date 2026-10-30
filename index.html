@@ -1,8 +1,11 @@
-﻿<!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" translate="no">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="google" content="notranslate">
+<meta name="format-detection" content="telephone=no">
+<meta name="color-scheme" content="light">
 <meta name="theme-color" content="#9d174d">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -596,7 +599,7 @@ try{var _lt=localStorage.getItem('karaya_nav_layout_v1')||'classic';if(['classic
     </div>
     <div class="lock-field">
       <label for="lockPwd">كلمة السر</label>
-      <input id="lockPwd" type="password" placeholder="••••••" autocomplete="current-password" aria-label="كلمة السر">
+      <input id="lockPwd" type="password" placeholder="••••••" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no" aria-label="كلمة السر">
     </div>
     <button id="lockGo" class="lock-btn" type="button" onclick="attemptLogin()">🔓 دخول إلى التطبيق</button>
     <div class="lock-foot">🔒 الدخول إلى التطبيق محمي بكلمة سر</div>
@@ -615,7 +618,7 @@ try{var _lt=localStorage.getItem('karaya_nav_layout_v1')||'classic';if(['classic
     </div>
     <div class="lock-field" id="act_id_wrap" style="display:none">
       <label for="act_id">البريد الإلكتروني (معرّف التفعيل)</label>
-      <input id="act_id" type="email" dir="ltr" autocomplete="email" placeholder="email@exemple.com">
+      <input id="act_id" type="email" dir="ltr" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" spellcheck="false" translate="no" placeholder="email@exemple.com">
     </div>
     <div id="actTrial" class="lock-sub" style="font-weight:700;color:#b45309;display:none"></div>
     <div class="lock-field">
@@ -1000,7 +1003,7 @@ try{var _lt=localStorage.getItem('karaya_nav_layout_v1')||'classic';if(['classic
         </div>
         <label class="chk" style="margin-top:22px"><input type="checkbox" id="u_actif" checked> حساب نشط</label>
       </div>
-      <div class="field"><label>كلمة السر</label><input id="u_pwd" type="password" autocomplete="new-password">
+      <div class="field"><label>كلمة السر</label><input id="u_pwd" type="password" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" autocorrect="off" autocapitalize="off" translate="no">
         <div class="hint">اتركها فارغة في التعديل للإبقاء على الكلمة الحالية.</div>
       </div>
     </div>
@@ -1378,6 +1381,8 @@ function save() {
   } catch (e) { }
   STORE.last = new Date().toLocaleTimeString('fr-FR');
   STORE.saved++;
+  /* signale l'enregistrement au module de sauvegarde datee (karaya-boot.js) */
+  try { window.dispatchEvent(new CustomEvent('karaya:saved')); } catch (e) { }
   const api = API();
   if (api && api.db_save) { clearTimeout(_saveTimer); _saveTimer = setTimeout(flushSave, 180); }
   renderStoreBadge();
@@ -5097,6 +5102,7 @@ window.KarayaApp = {
 <script src="karaya-store.js"></script>
 <script src="karaya-boot.js"></script>
 <script>if('serviceWorker' in navigator && location.protocol==='https:'){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 </body>

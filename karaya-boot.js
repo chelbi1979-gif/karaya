@@ -386,7 +386,10 @@
     autoTimer = setInterval(function () {
       var s = store();
       if (!s || !s.isConfigured()) return;
-      if (!s.state || !s.state.online) return;
+      /* CORRECTIF : avant, on exigeait state.online. Si le poste demarrait
+         hors ligne, online restait false et la synchro automatique ne
+         partait PLUS JAMAIS, meme apres le retour du reseau. sync() sait
+         echouer proprement, on la lance donc des que le cloud est configure. */
       if (document.hidden) return;
       doSync(true);
     }, 90000);
@@ -415,9 +418,13 @@
     var s = store();
     if (!s || !s.onRemote) return;
     try {
-      s.onRemote(function (payload) {
+      s.onRemote(function (payload, meta) {
         if (!payload) return;
         if (setDB(payload)) {
+          /* on memorise la revision distante : sans cela, cfg.rev restait
+             en retard et le prochain sync renvoyait le local par-dessus
+             le distant (ecrasement silencieux des donnees de l'autre poste). */
+          try { if (s.markSynced && meta && meta.rev) s.markSynced(meta.rev); } catch (e) { }
           lastSyncAt = new Date().toLocaleTimeString();
           setStatus(t('تم التحديث من السحابة'), 'ok');
           paintBadge();
@@ -459,4 +466,354 @@
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) { paintBadge(); }
   });
+})();
+
+/* =====================================================================
+   karaya-boot.js — MODULE 2 (ajouté) : MODE KIOSQUE + SAUVEGARDE DATÉE
+   =====================================================================
+   Ce bloc est AJOUTÉ à la fin de karaya-boot.js. Il ne remplace rien :
+   les boutons ع/FR et ☁️ continuent de fonctionner exactement comme avant.
+
+   DEUX RÔLES
+   ---------------------------------------------------------------------
+   A) MODE KIOSQUE (tablette de magasin confiée à des employés)
+        * aucune demande de permission « Notifications » n'est faite ici
+          (et il n'y en avait aucune dans index.html : vérifié) ;
+        * la traduction automatique du navigateur est neutralisée :
+          <html translate="no">, <meta name="google" content="notranslate">,
+          et tout champ créé dynamiquement reçoit translate="no" ;
+        * les gestionnaires de mots de passe (Chrome, Samsung Pass, 1Password,
+          Bitwarden) ne proposent plus d'enregistrer le mot de passe
+          admin / utilisateur : autocomplete="off" + attributs data-*-ignore
+          + verrou readOnly au focus (technique « readonly trick »).
+     ⚠️ Ce qui NE PEUT PAS être forcé : Edge/Safari peuvent encore afficher
+        une bulle de leur côté. Le `readonly` trick et autocomplete="off"
+        suppriment la très grande majorité des bulles sur Chrome/Android.
+
+   B) SAUVEGARDE JSON PAR DATE, dans un sous-dossier de l'application
+        1. window.AndroidBridge  (Kotlin, cf. KarayaNativeBridge.kt)
+             → filesDir/backups/AAAA-MM-JJ.json   (privé, atomique, rotation)
+        2. sinon File System Access API (Chrome) → dossier choisi une fois
+        3. sinon OPFS (navigator.storage.getDirectory) → /backups/AAAA-MM-JJ.json
+        4. en permanence : copie de secours localStorage (7 derniers jours)
+        5. export manuel : téléchargement (ou MediaStore via le pont)
+
+   API PUBLIQUE
+     window.KarayaBackup.saveNow()      → sauvegarde immédiate
+     window.KarayaBackup.engine()       → 'android' | 'fsa' | 'opfs' | 'download'
+     window.KarayaBackup.list()         → Promise<[{date,bytes}]>
+     window.KarayaBackup.export(date?)  → export vers Téléchargements
+     window.KarayaBackup.last            → dernière sauvegarde
+
+   DÉCLENCHEURS : à chaque enregistrement (événement 'karaya:saved' émis par
+   save() dans index.html), toutes les 10 min, au passage en arrière-plan,
+   et 3 s après le démarrage.
+   ===================================================================== */
+(function () {
+  'use strict';
+
+  var CFG = {
+    kiosk: true,            /* passez à false pour rendre la main au navigateur */
+    readonlyTrick: true,    /* verrou anti-gestionnaire de mots de passe        */
+    keepDays: 90,           /* rotation côté Kotlin / FSA                       */
+    ringDays: 7,            /* copie localStorage                               */
+    debounce: 5000,
+    periodic: 600000
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function app() { return window.KarayaApp || null; }
+  function getDB() {
+    try { var a = app(); return a && a.getDB ? a.getDB() : null; } catch (e) { return null; }
+  }
+  function today() {
+    var d = new Date(), p = function (n) { return ('0' + n).slice(-2); };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+  function nowISO() { return new Date().toISOString(); }
+
+  /* ==================================================================
+     A. MODE KIOSQUE
+     ================================================================== */
+  function harden(root) {
+    if (!root || !root.querySelectorAll) return;
+    var sel = 'input, textarea, select, button, form';
+    var nodes = root.querySelectorAll(sel);
+    for (var i = 0; i < nodes.length; i++) {
+      var e = nodes[i];
+      if (e.getAttribute('translate') !== 'no') e.setAttribute('translate', 'no');
+      var t = (e.getAttribute('type') || '').toLowerCase();
+      if (t === 'password') {
+        e.setAttribute('autocomplete', 'off');
+        e.setAttribute('data-lpignore', 'true');
+        e.setAttribute('data-1p-ignore', 'true');
+        e.setAttribute('data-bwignore', 'true');
+        e.setAttribute('data-form-type', 'other');
+        e.setAttribute('autocorrect', 'off');
+        e.setAttribute('autocapitalize', 'off');
+        e.setAttribute('spellcheck', 'false');
+        if (CFG.readonlyTrick && !e.__kbLock) {
+          e.__kbLock = true;
+          /* le champ redevient normal dès la 1re frappe / le 1er focus */
+          e.addEventListener('focus', function () {
+            var el = this;
+            el.readOnly = true;
+            setTimeout(function () { el.readOnly = false; }, 70);
+          }, true);
+        }
+      }
+    }
+  }
+
+  function kioskMode() {
+    if (!CFG.kiosk) return;
+    try {
+      document.documentElement.setAttribute('translate', 'no');
+      document.documentElement.classList.add('notranslate');
+    } catch (e) { }
+    try {
+      if (!document.querySelector('meta[name="google"][content="notranslate"]')) {
+        var m = document.createElement('meta');
+        m.name = 'google'; m.content = 'notranslate';
+        document.head.appendChild(m);
+      }
+    } catch (e) { }
+    harden(document);
+    /* les écrans / fenêtres sont re-rendus en permanence : on surveille */
+    try {
+      var mo = new MutationObserver(function (muts) {
+        for (var i = 0; i < muts.length; i++) {
+          var added = muts[i].addedNodes;
+          for (var j = 0; j < added.length; j++) {
+            if (added[j].nodeType === 1) harden(added[j].parentNode || added[j]);
+          }
+        }
+      });
+      mo.observe(document.body, { childList: true, subtree: true });
+    } catch (e) { }
+    /* on ne demande JAMAIS la permission Notifications (cohérence bureau) */
+    try {
+      if (window.Notification && Notification.permission === 'default') {
+        /* volontairement vide : ne pas appeler requestPermission() */
+      }
+    } catch (e) { }
+  }
+
+  /* ==================================================================
+     B. SAUVEGARDE DATÉE
+     ================================================================== */
+  var lastSave = null, timer = null, busy = false, dirHandle = null;
+
+  function bridge() {
+    var b = window.AndroidBridge;
+    if (!b) return null;
+    try { if (typeof b.ping === 'function') { var p = JSON.parse(b.ping()); if (p && p.ok) return b; } } catch (e) { }
+    try { if (typeof b.saveJson === 'function') return b; } catch (e) { }
+    return null;
+  }
+
+  function payload() {
+    var db = getDB();
+    if (!db || typeof db !== 'object') return null;
+    var c = function (k) { return Array.isArray(db[k]) ? db[k].length : 0; };
+    return JSON.stringify({
+      app: 'karaya', schema: 'loc-db-v1', version: (window.KarayaApp && KarayaApp.version) || '3.0',
+      savedAt: nowISO(), date: today(),
+      platform: (window.KLicense && KLicense.platform) ? KLicense.platform() : 'web',
+      counts: { articles: c('articles'), clients: c('clients'), locs: c('locs'), lines: c('lines'), users: c('users') },
+      db: db
+    });
+  }
+
+  /* --- copie de secours localStorage (toujours, même sans pont) ------ */
+  function ringWrite(json) {
+    var k = 'karaya_bk_' + today();
+    try { localStorage.setItem(k, json); } catch (e) { return false; }
+    try {
+      var keys = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var kk = localStorage.key(i);
+        if (kk && kk.indexOf('karaya_bk_') === 0) keys.push(kk);
+      }
+      keys.sort();
+      while (keys.length > CFG.ringDays) {
+        var old = keys.shift();
+        if (old !== k) localStorage.removeItem(old);
+      }
+    } catch (e) { }
+    return true;
+  }
+
+  /* --- OPFS -------------------------------------------------------- */
+  function opfsWrite(json) {
+    if (!navigator.storage || !navigator.storage.getDirectory) return Promise.resolve(false);
+    return navigator.storage.getDirectory().then(function (rootDir) {
+      return rootDir.getDirectoryHandle('backups', { create: true });
+    }).then(function (dir) {
+      return dir.getFileHandle(today() + '.json', { create: true });
+    }).then(function (fh) {
+      return fh.createWritable();
+    }).then(function (w) {
+      return w.write(json).then(function () { return w.close(); });
+    }).then(function () { return true; }).catch(function () { return false; });
+  }
+
+  /* --- File System Access (dossier choisi par l'utilisateur) -------- */
+  function fsaWrite(json) {
+    if (!window.showDirectoryPicker) return Promise.resolve(false);
+    var p = dirHandle ? Promise.resolve(dirHandle) : Promise.reject(new Error('no-handle'));
+    return p.then(function (dir) {
+      return dir.getDirectoryHandle('karaya-backups', { create: true });
+    }).then(function (dir) {
+      return dir.getFileHandle(today() + '.json', { create: true });
+    }).then(function (fh) {
+      return fh.createWritable();
+    }).then(function (w) {
+      return w.write(json).then(function () { return w.close(); });
+    }).then(function () { return true; }).catch(function () { return false; });
+  }
+
+  /* --- téléchargement (dernier recours : TWA sans pont) ------------- */
+  function download(json, name) {
+    try {
+      var b = new Blob([json], { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(b);
+      a.download = (name || ('karaya-' + today())) + '.json';
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function engine() {
+    if (bridge()) return 'android';
+    if (dirHandle && window.showDirectoryPicker) return 'fsa';
+    if (navigator.storage && navigator.storage.getDirectory) return 'opfs';
+    return 'download';
+  }
+
+  /* --- la fonction unique ------------------------------------------- */
+  function saveNow(opts) {
+    opts = opts || {};
+    if (busy) return Promise.resolve(lastSave);
+    var json = payload();
+    if (!json) { if (opts.verbose) console.warn('[Karaya] rien à sauvegarder (DB vide)'); return Promise.resolve(null); }
+    busy = true;
+    ringWrite(json);                                   /* filet de sécurité */
+
+    var b = bridge();
+    if (b) {
+      try {
+        var r = JSON.parse(b.saveJson(today(), json));
+        busy = false;
+        if (r && r.ok) {
+          lastSave = { engine: 'android', date: today(), file: r.file, path: r.path, at: nowISO(), bytes: r.bytes };
+          console.info('[Karaya] sauvegarde Android →', r.path);
+          return Promise.resolve(lastSave);
+        }
+        console.warn('[Karaya] saveJson refusé :', r && r.error);
+      } catch (e) { console.warn('[Karaya] pont Android en erreur', e); }
+    }
+
+    return (dirHandle ? fsaWrite(json) : Promise.resolve(false)).then(function (ok1) {
+      if (ok1) { busy = false; lastSave = { engine: 'fsa', date: today(), at: nowISO() }; return lastSave; }
+      return opfsWrite(json).then(function (ok2) {
+        busy = false;
+        var eng = ok2 ? 'opfs' : 'download';
+        lastSave = { engine: eng, date: today(), at: nowISO() };
+        if (ok2) console.info('[Karaya] sauvegarde OPFS backups/' + today() + '.json');
+        return lastSave;
+      });
+    }).catch(function () { busy = false; return lastSave; });
+  }
+
+  function schedule(ms) {
+    clearTimeout(timer);
+    timer = setTimeout(function () { saveNow(); }, ms == null ? CFG.debounce : ms);
+  }
+
+  /* --- choix du dossier (une seule fois, sur action de l'utilisateur) */
+  function pickFolder() {
+    if (!window.showDirectoryPicker) return Promise.resolve({ ok: false, error: 'non supporté' });
+    return window.showDirectoryPicker({ mode: 'readwrite', id: 'karaya-backups' }).then(function (dir) {
+      dirHandle = dir;
+      try { localStorage.setItem('karaya_bk_dir', dir.name || 'dossier'); } catch (e) { }
+      return saveNow({ verbose: true }).then(function () { return { ok: true, dir: dir.name }; });
+    }).catch(function (e) { return { ok: false, error: String(e && e.message || e) }; });
+  }
+
+  function list() {
+    var b = bridge();
+    if (b && typeof b.list === 'function') {
+      try { var r = JSON.parse(b.list()); return Promise.resolve((r && r.files) || []); } catch (e) { }
+    }
+    if (navigator.storage && navigator.storage.getDirectory) {
+      return navigator.storage.getDirectory().then(function (d) { return d.getDirectoryHandle('backups'); })
+        .then(function (dir) {
+          var out = [];
+          var it = dir.values ? dir.values() : null;
+          if (!it) return out;
+          function step() { return it.next().then(function (r) { if (r.done) return out; if (r.value.kind === 'file') out.push({ date: r.value.name.replace('.json', '') }); return step(); }); }
+          return step();
+        }).catch(function () { return ringList(); });
+    }
+    return Promise.resolve(ringList());
+  }
+  function ringList() {
+    var out = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf('karaya_bk_') === 0) out.push({ date: k.replace('karaya_bk_', ''), bytes: (localStorage.getItem(k) || '').length });
+      }
+    } catch (e) { }
+    return out.sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  }
+
+  function exportDay(date) {
+    date = date || today();
+    var b = bridge();
+    if (b && typeof b.export === 'function') {
+      try { var r = JSON.parse(b.export(date)); return Promise.resolve(r); } catch (e) { }
+    }
+    var json = null;
+    try { json = localStorage.getItem('karaya_bk_' + date); } catch (e) { }
+    if (!json) json = payload();
+    if (!json) return Promise.resolve({ ok: false, error: 'aucune donnée' });
+    return Promise.resolve({ ok: download(json, 'karaya-' + date) });
+  }
+
+  /* ==================================================================
+     C. BRANCHEMENTS
+     ================================================================== */
+  function wire() {
+    /* 1) après chaque save() d'index.html */
+    window.addEventListener('karaya:saved', function () { schedule(); });
+    /* 2) périodique */
+    setInterval(function () { saveNow(); }, CFG.periodic);
+    /* 3) passage en arrière-plan (le moment où la tablette est posée) */
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) saveNow();
+    });
+    window.addEventListener('pagehide', function () { saveNow(); });
+    window.addEventListener('beforeunload', function () { saveNow(); });
+    /* 4) au démarrage */
+    setTimeout(function () { saveNow(); }, 3000);
+  }
+
+  window.KarayaBackup = {
+    saveNow: saveNow,
+    engine: engine,
+    list: list,
+    export: exportDay,
+    pickFolder: pickFolder,
+    get last() { return lastSave; },
+    today: today,
+    _cfg: CFG
+  };
+
+  kioskMode();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire);
+  else wire();
 })();
