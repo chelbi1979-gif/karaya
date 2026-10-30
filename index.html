@@ -1025,6 +1025,17 @@ try{var _lt=localStorage.getItem('karaya_nav_layout_v1')||'classic';if(['classic
   </div>
 </div>
 
+<div class="modal-bg" id="m-opfs">
+  <div class="modal">
+    <header><h3>استيراد مباشر من OPFS</h3><button class="icobtn" style="background:#f7f2f5;color:#7c6f77;border-color:#ecdfe6" onclick="closeModal('m-opfs')">✕</button></header>
+    <div class="body" id="opfsBody"></div>
+    <footer>
+      <button class="btn ghost" onclick="closeModal('m-opfs')">إغلاق</button>
+      <button class="btn primary" onclick="opfsSaveNowDb()">💾 حفظ النسخة الحالية في OPFS</button>
+    </footer>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <div id="printArea"></div>
 
@@ -4176,6 +4187,7 @@ async function excelImport(ev) {
   }
 }
 let xlsMsg = '';
+let opfsMsg = '';
 
 function renderImport() {
   const total = Object.keys(TABLES).reduce((s, k) => s + (DB[k] || []).length, 0);
@@ -4206,6 +4218,14 @@ function renderImport() {
         <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="restoreJSON(event)">
       </div>
       <div class="hint">«تصدير نسخة كاملة» يفتح نافذة حفظ الملف (JSON) ، و «استعادة نسخة» يفتح نافذة اختيار الملف.</div>
+    </div>
+    <div class="card accent"><h3><span class="dot"></span>OPFS — استيراد مباشر</h3>
+      <p class="small">استيراد النسخ الاحتياطية المحفوظة داخل ذاكرة التطبيق (OPFS) مباشرة — يفتح نافذة النظام على أندرويد و الهاتف ، و يعمل أيضا على سطح المكتب.</p>
+      <div class="btnrow mt">
+        <button class="btn primary" onclick="openOpfsImport()">🗂️ فتح نافذة OPFS و استيراد</button>
+        <button class="btn ghost" onclick="opfsSaveNowDb()">💾 حفظ النسخة الحالية في OPFS</button>
+      </div>
+      <div class="note" id="opfsInfo">${opfsMsg || 'لم يتم فحص OPFS بعد.'}</div>
     </div>`;
 }
 
@@ -4477,6 +4497,110 @@ function restoreJSON(ev) {
   const f = ev && ev.target && ev.target.files ? ev.target.files[0] : null;
   restoreFileObj(f);
   if (ev && ev.target) ev.target.value = '';
+}
+
+/* ================= OPFS : استيراد مباشر (Android / PWA) =================
+   استيراد النسخ المحفوظة داخل navigator.storage (OPFS) مباشرة.
+   على أندرويد لا يوجد showOpenFilePicker : نستعمل <input type="file">
+   (يفتح نافذة النظام) ثم نكتب النتيجة في OPFS.
+   - الكتابة : navigator.storage.getDirectory() → /backups/NAME.json
+   - القراءة : نفس المسار → استعادة في قاعدة البيانات
+   - سطح المكتب : نفس الدوال تعمل أيضا (Chrome / Edge / WebView2) ،
+     و كل شيء مُحمي بفحص الإمكانيات : لا شيء يتعطل. */
+function opfsSupported() { return !!(navigator.storage && navigator.storage.getDirectory); }
+
+async function opfsDir(create) {
+  const root = await navigator.storage.getDirectory();
+  return root.getDirectoryHandle('backups', { create: !!create });
+}
+
+async function opfsWriteJson(name, text) {
+  if (!opfsSupported()) return false;
+  try {
+    const dir = await opfsDir(true);
+    const fh = await dir.getFileHandle(name + '.json', { create: true });
+    const w = await fh.createWritable();
+    await w.write(text);
+    await w.close();
+    opfsMsg = 'تم الحفظ في OPFS : backups/' + name + '.json';
+    return true;
+  } catch (e) { opfsMsg = 'تعذر الكتابة في OPFS : ' + (e && e.message || e); return false; }
+}
+
+async function opfsReadJson(name) {
+  try {
+    const dir = await opfsDir(false);
+    const fh = await dir.getFileHandle(name + '.json', { create: false });
+    const f = await fh.getFile();
+    return await f.text();
+  } catch (e) { return null; }
+}
+
+async function opfsListBackups() {
+  if (!opfsSupported()) return [];
+  try {
+    const dir = await opfsDir(false);
+    const out = [];
+    for await (const en of dir.values()) { if (en.kind === 'file') out.push(en.name.replace(/\.json$/, '')); }
+    return out.sort().reverse();
+  } catch (e) { return []; }
+}
+
+async function openOpfsImport() {
+  openModal('m-opfs');
+  await opfsRefreshModal();
+}
+
+async function opfsRefreshModal() {
+  const box = $('opfsBody');
+  if (!box) return;
+  if (!opfsSupported()) {
+    box.innerHTML = '<p class="small">OPFS غير مدعوم على هذا المتصفح.</p>';
+    return;
+  }
+  const list = await opfsListBackups();
+  box.innerHTML = `
+    <p class="small">النسخ المحفوظة داخل ذاكرة التطبيق (OPFS) — اضغط « استعادة » لاستيراد النسخة مباشرة في قاعدة البيانات.</p>
+    ${list.length ? list.map(n => `
+      <div class="kv"><span class="k">${n}</span><span class="v"><button class="btn primary" style="padding:6px 14px" onclick="opfsRestore('${n}')">⬆️ استعادة</button></span></div>`).join('')
+      : '<div class="hint">لا توجد نسخ داخل OPFS بعد.</div>'}
+    <div class="field mt">
+      <label>إضافة ملف JSON إلى OPFS (يفتح نافذة النظام)</label>
+      <input type="file" accept=".json" onchange="opfsImportFileToOPFS(event)">
+    </div>
+    <div class="note mt">${opfsMsg || ''}</div>`;
+}
+
+async function opfsRestore(name) {
+  const txt = await opfsReadJson(name);
+  if (txt == null) { toast('تعذر قراءة النسخة من OPFS', 'err'); return; }
+  try {
+    const o = JSON.parse(txt);
+    if (!o.articles) throw 0;
+    DB = o; ['articles', 'clients', 'locs', 'lines', 'users', 'depense', 'caisse_ctrl'].forEach(k => { if (!DB[k]) DB[k] = []; });
+    if (!DB.info) DB.info = defaultInfo();
+    save(); closeModal('m-opfs'); xlsMsg = 'تمت الاستعادة من OPFS : ' + name;
+    renderImport(); toast('تمت الاستعادة من OPFS بنجاح', 'ok');
+  } catch (err) { toast('ملف غير صالح', 'err'); }
+}
+
+async function opfsSaveNowDb() {
+  if (!opfsSupported()) { toast('OPFS غير مدعوم على هذا الجهاز', 'err'); return; }
+  const name = 'opfs-manuelle-' + todayISO();
+  const ok = await opfsWriteJson(name, JSON.stringify(DB));
+  toast(ok ? 'تم حفظ النسخة في OPFS' : 'تعذر الحفظ في OPFS', ok ? 'ok' : 'err');
+  if (ok && $('m-opfs') && $('m-opfs').classList.contains('show')) opfsRefreshModal();
+}
+
+async function opfsImportFileToOPFS(ev) {
+  const f = ev && ev.target && ev.target.files ? ev.target.files[0] : null;
+  if (ev && ev.target) ev.target.value = '';
+  if (!f) return;
+  const txt = await f.text();
+  const name = 'opfs-' + f.name.replace(/\.[^.]+$/, '') + '-' + todayISO();
+  const ok = await opfsWriteJson(name, txt);
+  toast(ok ? 'تم حفظ الملف في OPFS' : 'تعذر الحفظ في OPFS', ok ? 'ok' : 'err');
+  if (ok && $('m-opfs') && $('m-opfs').classList.contains('show')) opfsRefreshModal();
 }
 
 /* ================= التشغيل ================= */

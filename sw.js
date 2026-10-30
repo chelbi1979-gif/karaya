@@ -5,7 +5,7 @@
    l'installation du service worker était alors rejetée EN ENTIER et
    l'application n'était jamais disponible hors-ligne. On ajoute donc
    chaque fichier séparément, en ignorant les erreurs 404. */
-const CACHE = 'karaya-v18';
+const CACHE = 'karaya-v19';
 const ASSETS = [
   './',
   './index.html',
