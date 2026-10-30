@@ -1,11 +1,12 @@
 /* sw.js — cache hors-ligne de l'application (mode cloud / mobile) */
-/* v18 : installation TOLÉRANTE.
+/* v21 : Smart Merge / Upsert — le cloud ne peut plus être écrasé
+   (fusion enregistrement par enregistrement + garde-fou base vide).
    Avec l'ancien code, caches.addAll() échoue si UN SEUL fichier manque
    (par ex. apple-touch-icon.png ou favicon-32.png absents du dépôt) :
    l'installation du service worker était alors rejetée EN ENTIER et
    l'application n'était jamais disponible hors-ligne. On ajoute donc
    chaque fichier séparément, en ignorant les erreurs 404. */
-const CACHE = 'karaya-v19';
+const CACHE = 'karaya-v21';
 const ASSETS = [
   './',
   './index.html',

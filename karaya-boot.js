@@ -109,6 +109,10 @@
       '.kb-btn.ok{background:#ecfdf5;border-color:#a7f3d0;color:#047857}' +
       '.kb-btn.dan{background:#fef2f2;border-color:#fecaca;color:#b91c1c}' +
       '.kb-btn[disabled]{opacity:.55;cursor:not-allowed}' +
+      /* champs secrets rendus en points : le champ n'est plus de type
+         "password", donc Chrome/Samsung Pass ne proposent plus rien */
+      '.kb-txtsec,[data-karaya-secret]{-webkit-text-security:disc!important}' +
+      'input::-webkit-credentials-auto-fill-button{display:none!important;visibility:hidden!important}' +
       '.kb-st{margin-top:11px;font-size:12px;border-radius:10px;padding:8px 10px;background:#f7f4f6;color:#7c6f77;min-height:18px;line-height:1.5;word-break:break-word;direction:ltr;text-align:left}' +
       '.kb-st.ok{background:#ecfdf5;color:#047857}' +
       '.kb-st.err{background:#fef2f2;color:#b91c1c}' +
@@ -153,13 +157,23 @@
       if (!r) return null;
       if (r.ok && r.action === 'pull' && r.db) {
         setDB(r.db);
-        if (s.markSynced) s.markSynced(r.rev);
+        if (s.markSynced) s.markSynced(r.rev, r.db);
         lastSyncAt = new Date().toLocaleTimeString();
         if (!silent) setStatus(t('تم التحديث من السحابة') + ' — ' + lastSyncAt, 'ok');
       } else if (r.ok && r.action === 'push') {
-        if (s.markSynced) s.markSynced(r.rev || s.state.rev);
+        if (s.markSynced) s.markSynced(r.rev || s.state.rev, getDB());
         lastSyncAt = new Date().toLocaleTimeString();
         if (!silent) setStatus(t('تم الإرسال إلى السحابة') + ' — ' + lastSyncAt, 'ok');
+      } else if (r.ok && r.action === 'merged') {
+        /* fusion intelligente : le résultat combiné est appliqué en local
+           ET envoyé au cloud — rien n'est perdu des deux côtés */
+        setDB(r.db);
+        if (s.markSynced) s.markSynced(r.rev || s.state.rev, r.db);
+        lastSyncAt = new Date().toLocaleTimeString();
+        if (!silent) {
+          var n = r.stats ? (r.stats.fromCloud + r.stats.updatedByCloud + r.stats.fromLocal + r.stats.updatedByLocal) : 0;
+          setStatus(t('دمج ذكي تم') + ' (' + n + ') — ' + lastSyncAt, 'ok');
+        }
       } else if (r.ok && r.action === 'conflict') {
         var keep = window.confirm(t('النسخة السحابية أحدث. استبدال البيانات المحلية بالنسخة السحابية ؟\n(إلغاء = الاحتفاظ بالمحلي وإرساله)'));
         if (keep) {
@@ -294,11 +308,11 @@
       '    <div class="kb-f"><label for="kb-url">' + t('عنوان المشروع') + ' (https://xxx.supabase.co)</label>' +
       '      <input id="kb-url" type="text" dir="ltr" autocomplete="off" spellcheck="false" placeholder="https://xxxxx.supabase.co"></div>' +
       '    <div class="kb-f"><label for="kb-anon">' + t('المفتاح العام') + ' (anon)</label>' +
-      '      <input id="kb-anon" type="password" dir="ltr" autocomplete="off" spellcheck="false" placeholder="eyJhbGciOi..."></div>' +
+      '      <input id="kb-anon" type="text" dir="ltr" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" placeholder="eyJhbGciOi..."></div>' +
       '    <div class="kb-f"><label for="kb-email">' + t('البريد الإلكتروني') + '</label>' +
-      '      <input id="kb-email" type="email" dir="ltr" autocomplete="username" spellcheck="false"></div>' +
+      '      <input id="kb-email" type="text" inputmode="email" dir="ltr" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"></div>' +
       '    <div class="kb-f"><label for="kb-pass">' + t('كلمة المرور') + '</label>' +
-      '      <input id="kb-pass" type="password" dir="ltr" autocomplete="current-password"></div>' +
+      '      <input id="kb-pass" type="text" class="kb-txtsec" dir="ltr" autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"></div>' +
       '    <label class="kb-chk"><input id="kb-signup" type="checkbox"> ' + t('إنشاء حساب جديد') + '</label>' +
       '    <div class="kb-row">' +
       '      <button class="kb-btn ok" id="kb-connect" type="button">' + t('اتصال') + '</button>' +
@@ -535,23 +549,54 @@
   /* ==================================================================
      A. MODE KIOSQUE
      ================================================================== */
+  /* ids/noms qui ressemblent à un secret (clé de licence, mot de passe,
+     token, clé anon...) : le gestionnaire de mots de passe de Chrome
+     s'y déclenche même sans type="password" → on les neutralise aussi */
+  var SECRET_RE = /(^|[_\-])(pwd|passwd|pass|password|motdepasse|key|cle|secret|anon|token|apikey|api[-_]?key|license)($|[_\-])/i;
+
   function harden(root) {
+    /* la règle « points » doit exister AVANT la conversion type=password →
+       type=text, sinon le mot de passe s'afficherait en clair une seconde */
+    if (!document.getElementById('kb-css-sec') && document.head) {
+      try {
+        var sst = document.createElement('style');
+        sst.id = 'kb-css-sec';
+        sst.textContent = '.kb-txtsec,[data-karaya-secret]{-webkit-text-security:disc!important}' +
+          'input::-webkit-credentials-auto-fill-button{display:none!important;visibility:hidden!important}';
+        document.head.appendChild(sst);
+      } catch (e) { }
+    }
     if (!root || !root.querySelectorAll) return;
     var sel = 'input, textarea, select, button, form';
     var nodes = root.querySelectorAll(sel);
     for (var i = 0; i < nodes.length; i++) {
       var e = nodes[i];
-      if (e.getAttribute('translate') !== 'no') e.setAttribute('translate', 'no');
-      var t = (e.getAttribute('type') || '').toLowerCase();
-      if (t === 'password') {
-        e.setAttribute('autocomplete', 'off');
-        e.setAttribute('data-lpignore', 'true');
-        e.setAttribute('data-1p-ignore', 'true');
-        e.setAttribute('data-bwignore', 'true');
-        e.setAttribute('data-form-type', 'other');
-        e.setAttribute('autocorrect', 'off');
-        e.setAttribute('autocapitalize', 'off');
-        e.setAttribute('spellcheck', 'false');
+      if (e.getAttribute && e.getAttribute('translate') !== 'no') {
+        try { e.setAttribute('translate', 'no'); } catch (err) { }
+      }
+      var t = '';
+      try { t = (e.getAttribute('type') || '').toLowerCase(); } catch (err) { }
+      var looksSecret = false;
+      try {
+        looksSecret = SECRET_RE.test(e.id || '') || SECRET_RE.test(e.name || '') ||
+                      SECRET_RE.test(e.getAttribute('placeholder') || '');
+      } catch (err) { }
+      if (t === 'password' || (looksSecret && (t === 'text' || t === '' || t === 'email'))) {
+        try { e.setAttribute('autocomplete', 'off'); } catch (err) { }
+        try { e.setAttribute('name', 'k_' + (e.id || 'f' + i) + '_x'); } catch (err) { }
+        try { e.setAttribute('data-lpignore', 'true'); } catch (err) { }
+        try { e.setAttribute('data-1p-ignore', 'true'); } catch (err) { }
+        try { e.setAttribute('data-bwignore', 'true'); } catch (err) { }
+        try { e.setAttribute('data-form-type', 'other'); } catch (err) { }
+        try { e.setAttribute('autocorrect', 'off'); } catch (err) { }
+        try { e.setAttribute('autocapitalize', 'off'); } catch (err) { }
+        try { e.setAttribute('spellcheck', 'false'); } catch (err) { }
+        try { e.classList.add('kb-txtsec'); } catch (err) { }
+        try { e.setAttribute('data-karaya-secret', 'true'); } catch (err) { }
+        /* un <input type=password> reste « détectable » par le gestionnaire
+           de mots de passe même avec autocomplete=off : on le convertit en
+           champ texte masqué par -webkit-text-security → plus de détection */
+        try { if (t === 'password') e.setAttribute('type', 'text'); } catch (err) { }
         if (CFG.readonlyTrick && !e.__kbLock) {
           e.__kbLock = true;
           /* le champ redevient normal dès la 1re frappe / le 1er focus */

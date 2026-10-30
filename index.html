@@ -599,7 +599,7 @@ try{var _lt=localStorage.getItem('karaya_nav_layout_v1')||'classic';if(['classic
     </div>
     <div class="lock-field">
       <label for="lockPwd">كلمة السر</label>
-      <input id="lockPwd" type="password" placeholder="••••••" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no" aria-label="كلمة السر">
+      <input id="lockPwd" type="text" class="kb-txtsec" placeholder="••••••" autocomplete="off" name="k_lock_x" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no" aria-label="كلمة السر">
     </div>
     <button id="lockGo" class="lock-btn" type="button" onclick="attemptLogin()">🔓 دخول إلى التطبيق</button>
     <div class="lock-foot">🔒 الدخول إلى التطبيق محمي بكلمة سر</div>
@@ -618,12 +618,12 @@ try{var _lt=localStorage.getItem('karaya_nav_layout_v1')||'classic';if(['classic
     </div>
     <div class="lock-field" id="act_id_wrap" style="display:none">
       <label for="act_id">البريد الإلكتروني (معرّف التفعيل)</label>
-      <input id="act_id" type="email" dir="ltr" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" spellcheck="false" translate="no" placeholder="email@exemple.com">
+      <input id="act_id" type="text" inputmode="email" dir="ltr" autocomplete="off" name="k_actmail_x" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" spellcheck="false" translate="no" placeholder="email@exemple.com">
     </div>
     <div id="actTrial" class="lock-sub" style="font-weight:700;color:#b45309;display:none"></div>
     <div class="lock-field">
       <label for="act_key">رمز الدخول</label>
-      <input id="act_key" type="text" placeholder="••••••" autocomplete="off">
+      <input id="act_key" type="text" class="kb-txtsec" placeholder="••••••" autocomplete="off" name="k_actkey_x" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
     </div>
     <button class="lock-btn" type="button" onclick="tryActivate()">🔓 تأكيد</button>
     <button id="actLater" class="lock-btn" type="button" style="display:none;background:#fff;color:#7c6f77;border:2px solid #ecdfe6;box-shadow:none;margin-top:9px" onclick="closeActivation()">لّاحقًا — متابعة الاستخدام</button>
@@ -5226,6 +5226,7 @@ window.KarayaApp = {
 <script src="karaya-store.js"></script>
 <script src="karaya-boot.js"></script>
 <script>if('serviceWorker' in navigator && location.protocol==='https:'){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
